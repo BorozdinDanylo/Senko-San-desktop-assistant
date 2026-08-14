@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 from pydantic import BaseModel
-from whisper.config.path import SYSTEM_PROMPT_FILE
+from listener.config.path import SYSTEM_PROMPT_FILE
 
 
 MODEL = "qwen3:1.7b"
