@@ -11,7 +11,7 @@ MAX_CONTEXT_SIZE = 20
 with open(SYSTEM_PROMPT_FILE) as f:
     SYSTEM_PROMPT = f.read()
 
-PERHAPS_ACTION = Literal["skip", "add", "send", "clear"]
+PERHAPS_ACTION = Literal["skip", "add", "update", "send", "clear"]
 
 
 class RouterResult(BaseModel):

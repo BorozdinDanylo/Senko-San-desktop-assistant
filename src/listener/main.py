@@ -2,21 +2,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from listener.whisper.stt import SpeechToText
+from listener.whisper.microphone_recording import microphone
+from listener.text_combining.text_input import TextInput
 import asyncio
 
 
-audio_queue = asyncio.Queue()
-transcription_queue = asyncio.Queue()
-request_queue = asyncio.Queue()
-tts_queue = asyncio.Queue()
-
-stt = SpeechToText()
+async def print_transcriptions(transcription_queue: asyncio.Queue[str]):
+    while True:
+        text = await transcription_queue.get()
+        print("HEARD:", text)
 
 
 async def worker():
-    print("Worker started")
-    while True:
-        print(await stt.listen())
+    audio_queue = asyncio.Queue()
+    transcription_queue = asyncio.Queue()
+    tts_queue = asyncio.Queue()
+
+    stt = SpeechToText(audio_queue, transcription_queue)
+    text_input = TextInput(transcription_queue, tts_queue)
+
+    await asyncio.gather(
+        microphone(audio_queue),
+        stt.worker(),
+        text_input.hear(),
+        print_transcriptions(tts_queue),
+    )
 
 
 def main():

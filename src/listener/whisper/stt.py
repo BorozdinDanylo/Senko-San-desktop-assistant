@@ -1,21 +1,21 @@
-from listener.whisper import record
 from faster_whisper import WhisperModel
 import numpy as np
 import asyncio
 
 
 class SpeechToText:
-    def __init__(self):
-        print("Loading model...")
+    def __init__(self, audio_queue: asyncio.Queue[np.ndarray], transcription_queue: asyncio.Queue[str]):
+        self.audio_queue = audio_queue
+        self.transcription_queue = transcription_queue
+
         self.model = WhisperModel(
             "small",
             device="cuda",
             compute_type="float16",
             local_files_only=True,
         )
-        print("Model loaded.")
 
-    def _transcribe(self, audio: np.ndarray) -> str:
+    def transcribe(self, audio: np.ndarray) -> str:
         segments, _ = self.model.transcribe(
             audio,
             language="uk",
@@ -27,16 +27,15 @@ class SpeechToText:
             for segment in segments
         ).strip()
 
-    async def listen(self, duration: float = 5.0) -> str:
-        audio = await asyncio.to_thread(
-            record,
-            duration,
-        )
+    async def worker(self):
+        while True:
+            audio = await self.audio_queue.get()
 
-        text = await asyncio.to_thread(
-            self._transcribe,
-            audio,
-        )
+            text = await asyncio.to_thread(
+                self.transcribe,
+                audio,
+            )
 
-        return text
 
+            if text:
+                await self.transcription_queue.put(text)
