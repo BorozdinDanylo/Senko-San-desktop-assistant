@@ -4,6 +4,7 @@ load_dotenv()
 from listener.whisper.stt import SpeechToText
 from listener.whisper.microphone_recording import microphone
 from listener.text_combining.text_input import TextInput
+from voice.model.senko import SenkoVoice
 import asyncio
 
 
@@ -20,12 +21,13 @@ async def worker():
 
     stt = SpeechToText(audio_queue, transcription_queue)
     text_input = TextInput(transcription_queue, tts_queue)
+    voice = SenkoVoice(tts_queue)
 
     await asyncio.gather(
         microphone(audio_queue),
         stt.worker(),
         text_input.hear(),
-        print_transcriptions(tts_queue),
+        voice.speek(),
     )
 
 

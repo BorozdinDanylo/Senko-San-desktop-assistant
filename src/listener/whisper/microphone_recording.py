@@ -28,6 +28,7 @@ async def microphone(audio_queue: asyncio.Queue[np.ndarray]):
             )
 
     with sd.InputStream(
+        device="pipewire",
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="float32",
