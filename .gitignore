@@ -1,4 +1,4 @@
-.idea/*
-
-.env
-media/*
+/.env
+/.idea/*
+/.venv/*
+/media/*
