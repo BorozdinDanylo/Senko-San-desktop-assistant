@@ -60,7 +60,6 @@ class TextInput:
     async def hear(self):
         while True:
             text = await self.text_queue.get()
-            print(text)
             messages = self.get_messages(text)
 
             response = await self.client.chat(
