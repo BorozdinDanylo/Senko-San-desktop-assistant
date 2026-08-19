@@ -38,4 +38,5 @@ class SpeechToText:
 
 
             if text:
+                print(text)
                 await self.transcription_queue.put(text)

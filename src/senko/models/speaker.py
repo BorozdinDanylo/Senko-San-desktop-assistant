@@ -24,7 +24,10 @@ class Speaker:
 
     def get_message(self) -> List[Message]:
         return [
-            SENKO_PROMPT,
+            Message(
+                role="system",
+                content=SENKO_PROMPT,
+            ),
             *self.content,
         ]
 
@@ -34,20 +37,32 @@ class Speaker:
             self.update_content("user", text)
             messages = self.get_message()
 
-            response = await self.client.chat(
+            stream = await self.client.chat(
                 model=SENKO_MODEL_NAME,
                 messages=messages,
                 think=SENKO_THINK_MODE,
-                stream=False,
+                stream=True,
                 keep_alive="1m",
                 options={
                     "temperature": SENKO_TEMPERATURE,
                 },
             )
 
-            answer = response.message.content
-            if answer:
-                self.update_content(response.message.role, answer)
-                await self.tts_queue.put(answer)
+            answer = ""
+            buffer = ""
+            async for chunk in stream:
+                text = chunk.message.content or ""
+                buffer += text
 
+                if any(char in buffer for char in ".!?…"):
+                    print(buffer)
+                    await self.tts_queue.put(buffer.strip())
+                    answer += f"{buffer.strip()} "
+                    buffer = ""
+            if buffer.strip():
+                print(buffer)
+                await self.tts_queue.put(buffer.strip())
+                answer += buffer.strip()
+
+            self.update_content("chat", answer)
 

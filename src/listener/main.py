@@ -24,7 +24,6 @@ async def worker():
     stt = SpeechToText(audio_queue, transcription_queue)
     text_input = TextInput(transcription_queue, text_analiz)
     senko = Speaker(text_analiz, tts_queue)
-    text_input = TextInput(transcription_queue, tts_queue)
     voice = SenkoVoice(tts_queue)
 
     await asyncio.gather(

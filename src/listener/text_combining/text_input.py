@@ -48,8 +48,11 @@ class TextInput:
             Message(
                 role="user",
                 content=f"""
-                    Current request buffer:
-                    {self.buffer}
+                    CURRENT_REQUEST_BUFFER:
+                    {self.buffer or "<empty>"}
+                    
+                    CURRENT_BACKGROUND_CONTEXT:
+                    {self.context or "<empty>"}
 
                     New transcription:
                     {text}

@@ -9,5 +9,5 @@ with open(SENKO_PROMPT_FILE, "r") as f:
 
 # Senko-San config
 SENKO_MODEL_NAME = "gpt-oss:20b"
-SENKO_THINK_MODE = True
+SENKO_THINK_MODE = "low"
 SENKO_TEMPERATURE = .9
