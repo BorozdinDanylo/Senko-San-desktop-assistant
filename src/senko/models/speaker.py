@@ -32,6 +32,7 @@ class Speaker:
         ]
 
     async def live(self):
+        await self.preload_model()
         while True:
             text = await self.text_analiz.get()
             self.update_content("user", text)
@@ -42,7 +43,7 @@ class Speaker:
                 messages=messages,
                 think=SENKO_THINK_MODE,
                 stream=True,
-                keep_alive="1m",
+                keep_alive=-1,
                 options={
                     "temperature": SENKO_TEMPERATURE,
                 },
@@ -59,10 +60,24 @@ class Speaker:
                     await self.tts_queue.put(buffer.strip())
                     answer += f"{buffer.strip()} "
                     buffer = ""
+                if chunk["done"]:
+                    print()
+                    print(f"Total:       {chunk['total_duration'] / 1e9:.2f}s")
+                    print(f"Loading:     {chunk['load_duration'] / 1e9:.2f}s")
+                    print(f"Prompt eval: {chunk['prompt_eval_duration'] / 1e9:.2f}s")
+                    print(f"Generation:  {chunk['eval_duration'] / 1e9:.2f}s")
             if buffer.strip():
                 print(buffer)
                 await self.tts_queue.put(buffer.strip())
                 answer += buffer.strip()
 
             self.update_content("chat", answer)
+
+    async def preload_model(self):
+        await self.client.chat(
+            model=SENKO_MODEL_NAME,
+            messages=[],
+            keep_alive=-1,
+        )
+        print("Senko-San is ready")
 

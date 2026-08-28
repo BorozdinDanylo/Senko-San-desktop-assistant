@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from listener.config.path import SYSTEM_PROMPT_FILE
 
 
-MODEL = "qwen3:1.7b"
+MODEL = "qwen3:14b"
 THINK_MODE = False
 TEMPERATURE = 0
 MAX_CONTEXT_SIZE = 20

@@ -2,6 +2,8 @@ from typing import List, Optional
 from listener.config.llm import MODEL, THINK_MODE, RouterResult, TEMPERATURE, MAX_CONTEXT_SIZE, SYSTEM_PROMPT, PERHAPS_ACTION
 from ollama import AsyncClient, Message
 from asyncio import Queue
+from json_repair import repair_json
+from pydantic import ValidationError
 
 
 class TextInput:
@@ -71,11 +73,14 @@ class TextInput:
                 think=THINK_MODE,
                 format=RouterResult.model_json_schema(),
                 stream=False,
-                keep_alive="1m",
+                keep_alive=-1,
                 options={
                     "temperature": TEMPERATURE,
                 },
             )
+
+            print(response.done_reason)
+            print(response.eval_count)
 
             self.update_content(text)
             self.content.append(response.message)
@@ -85,8 +90,13 @@ class TextInput:
             if not content:
                 return
 
-            resalt = RouterResult.model_validate_json(content)
-            await self.update_buffer(resalt.action, resalt.text)
+            try:
+                result = RouterResult.model_validate_json(content)
+            except ValidationError:
+                repaired = repair_json(content)
+                result = RouterResult.model_validate_json(repaired)
+
+            await self.update_buffer(result.action, result.text)
 
 
 

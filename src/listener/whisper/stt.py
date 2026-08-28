@@ -9,7 +9,7 @@ class SpeechToText:
         self.transcription_queue = transcription_queue
 
         self.model = WhisperModel(
-            "small",
+            "large-v3",
             device="cuda",
             compute_type="float16",
             local_files_only=True,

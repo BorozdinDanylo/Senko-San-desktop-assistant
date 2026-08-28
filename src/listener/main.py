@@ -31,7 +31,8 @@ async def worker():
         stt.worker(),
         text_input.hear(),
         senko.live(),
-        voice.speek(),
+        voice.tts_worker(),
+        voice.speak(),
     )
 
 
