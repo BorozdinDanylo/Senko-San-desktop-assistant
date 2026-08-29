@@ -27,6 +27,14 @@ class TextInput:
         if len(self.content) > MAX_CONTEXT_SIZE:
             self.content = self.content[len(self.content) - MAX_CONTEXT_SIZE:]
 
+    def add_senko_answer(self, text: str):
+        self.content.append(
+            Message(
+                role="assistant",
+                content=text,
+            )
+        )
+
     async def update_buffer(self, action: PERHAPS_ACTION, text: Optional[str]):
         match action:
             case "add":
@@ -78,9 +86,6 @@ class TextInput:
                     "temperature": TEMPERATURE,
                 },
             )
-
-            print(response.done_reason)
-            print(response.eval_count)
 
             self.update_content(text)
             self.content.append(response.message)

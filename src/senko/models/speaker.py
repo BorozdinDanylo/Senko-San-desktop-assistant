@@ -1,13 +1,14 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_TEMPERATURE, SENKO_THINK_MODE
-from typing import List
+from typing import List, Callable
 from ollama import AsyncClient, Message
 import asyncio
 
 
 class Speaker:
-    def __init__(self, text_analiz: asyncio.Queue[str], tts_queue: asyncio.Queue[str]):
+    def __init__(self, text_analiz: asyncio.Queue[str], tts_queue: asyncio.Queue[str], on_response: Callable[[str], None]):
         self.text_analiz = text_analiz
         self.tts_queue = tts_queue
+        self.on_response = on_response
 
         self.content: List[Message] = []
         self.context: str = ""
@@ -72,6 +73,7 @@ class Speaker:
                 answer += buffer.strip()
 
             self.update_content("chat", answer)
+            self.on_response(answer)
 
     async def preload_model(self):
         await self.client.chat(
