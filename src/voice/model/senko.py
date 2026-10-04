@@ -1,5 +1,6 @@
 from voice.model import SENKO_SAN_VOICE_ID, SENKO_SAN_API_KEY
 from voice import clear_queue
+from pipeline import stop_talking_event
 from fishaudio import AsyncFishAudio
 from fishaudio.utils import play
 import asyncio
@@ -10,6 +11,8 @@ class SenkoVoice:
         self.client = AsyncFishAudio(api_key=SENKO_SAN_API_KEY)
         self.tts_queue = tts_queue
         self.audio_queue = asyncio.Queue[bytes]()
+
+        asyncio.create_task(self.stop_talking())
 
     async def tts_worker(self):
         while True:
@@ -30,9 +33,14 @@ class SenkoVoice:
 
             await asyncio.to_thread(play, audio)
 
-    def stop_talking(self):
-        clear_queue(self.tts_queue)
-        clear_queue(self.audio_queue)
+    async def stop_talking(self):
+        while True:
+            await stop_talking_event.wait()
+
+            clear_queue(self.tts_queue)
+            clear_queue(self.audio_queue)
+
+            stop_talking_event.clear()
 
 
 

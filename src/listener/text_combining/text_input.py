@@ -1,13 +1,14 @@
 from typing import List, Optional
 from listener.config.llm import MODEL, THINK_MODE, RouterResult, TEMPERATURE, MAX_CONTEXT_SIZE, SYSTEM_PROMPT, PERHAPS_ACTION
+from pipeline import add_answer_queue
 from ollama import AsyncClient, Message
-from asyncio import Queue
 from json_repair import repair_json
 from pydantic import ValidationError
+import asyncio
 
 
 class TextInput:
-    def __init__(self, text_queue: Queue, tts_queue: Queue):
+    def __init__(self, text_queue: asyncio.Queue, tts_queue: asyncio.Queue):
         self.text_queue = text_queue
         self.tts_queue = tts_queue
 
@@ -16,6 +17,8 @@ class TextInput:
         self.content: List[Message] = []
 
         self.client: AsyncClient = AsyncClient()
+
+        asyncio.create_task(self.add_senko_answer())
 
     def update_content(self, text: str):
         self.content.append(
@@ -27,13 +30,16 @@ class TextInput:
         if len(self.content) > MAX_CONTEXT_SIZE:
             self.content = self.content[len(self.content) - MAX_CONTEXT_SIZE:]
 
-    def add_senko_answer(self, text: str):
-        self.content.append(
-            Message(
-                role="assistant",
-                content=text,
+    async def add_senko_answer(self):
+        while True:
+            text: str = await add_answer_queue.get()
+
+            self.content.append(
+                Message(
+                    role="assistant",
+                    content=text,
+                )
             )
-        )
 
     async def update_buffer(self, action: PERHAPS_ACTION, text: Optional[str], is_complete: bool):
         match action:
