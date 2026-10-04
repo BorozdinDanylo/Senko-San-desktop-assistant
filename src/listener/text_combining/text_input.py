@@ -35,7 +35,7 @@ class TextInput:
             )
         )
 
-    async def update_buffer(self, action: PERHAPS_ACTION, text: Optional[str]):
+    async def update_buffer(self, action: PERHAPS_ACTION, text: Optional[str], is_complete: bool):
         match action:
             case "add":
                 self.buffer += f"{text or ""} "
@@ -43,10 +43,10 @@ class TextInput:
                 self.buffer = ""
             case "update":
                 self.buffer = f"{text or ""} "
-            case "send":
-                self.buffer += f"{text or ""} "
-                await self.tts_queue.put(self.buffer)
-                self.buffer = ""
+
+        if is_complete:
+            await self.tts_queue.put(self.buffer)
+            self.buffer = ""
 
     def get_messages(self, text) -> List[Message]:
         return [
@@ -84,6 +84,7 @@ class TextInput:
                 keep_alive=-1,
                 options={
                     "temperature": TEMPERATURE,
+                    "num_ctx": 4096
                 },
             )
 
@@ -101,7 +102,7 @@ class TextInput:
                 repaired = repair_json(content)
                 result = RouterResult.model_validate_json(repaired)
 
-            await self.update_buffer(result.action, result.text)
+            await self.update_buffer(result.action, result.text, result.is_complete)
 
 
 

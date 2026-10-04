@@ -1,6 +1,5 @@
-from time import perf_counter
-
 from voice.model import SENKO_SAN_VOICE_ID, SENKO_SAN_API_KEY
+from voice import clear_queue
 from fishaudio import AsyncFishAudio
 from fishaudio.utils import play
 import asyncio
@@ -16,18 +15,12 @@ class SenkoVoice:
         while True:
             text = await self.tts_queue.get()
 
-            start = perf_counter()
-            print("Starting TTS")
-
             audio = await self.client.tts.convert(
                 text=text,
                 reference_id=SENKO_SAN_VOICE_ID,
                 model="s2.1-pro-free",  # type: ignore[arg-type]
                 format="mp3",
             )
-
-            print("Put audio into queue")
-            print("Fish total:", perf_counter() - start)
 
             await self.audio_queue.put(audio)
 
@@ -36,6 +29,10 @@ class SenkoVoice:
             audio = await self.audio_queue.get()
 
             await asyncio.to_thread(play, audio)
+
+    def stop_talking(self):
+        clear_queue(self.tts_queue)
+        clear_queue(self.audio_queue)
 
 
 

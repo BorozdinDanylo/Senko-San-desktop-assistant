@@ -1,21 +1,27 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_TEMPERATURE, SENKO_THINK_MODE
-from typing import List, Callable
-from ollama import AsyncClient, Message
+from typing import List, Callable, Dict, Any, Coroutine
+from ollama import AsyncClient, Message, ChatResponse
 import asyncio
+import emoji
 
 
 class Speaker:
-    def __init__(self, text_analiz: asyncio.Queue[str], tts_queue: asyncio.Queue[str], on_response: Callable[[str], None]):
+    def __init__(self, text_analiz: asyncio.Queue[str], tts_queue: asyncio.Queue[str], tools: Dict[str, Callable[..., Coroutine[Any, Any, str]]], on_response: Callable[[str], None], stop_talking: Callable[..., None]):
         self.text_analiz = text_analiz
         self.tts_queue = tts_queue
         self.on_response = on_response
+        self.stop_talking = stop_talking
 
         self.content: List[Message] = []
+        self.tools = tools
         self.context: str = ""
 
         self.client: AsyncClient = AsyncClient()
 
     def update_content(self, role: str, content: str):
+        if content == "":
+            return
+
         self.content.append(
             Message(
                 role=role,
@@ -44,15 +50,24 @@ class Speaker:
                 messages=messages,
                 think=SENKO_THINK_MODE,
                 stream=True,
+                tools=list(self.tools.values()),
                 keep_alive=-1,
                 options={
                     "temperature": SENKO_TEMPERATURE,
+                    "num_ctx": 4096
                 },
             )
 
+            self.stop_talking()
+
             answer = ""
             buffer = ""
+            tool_calls: List[Message.ToolCall] = []
             async for chunk in stream:
+                _tool_calls = chunk.message.tool_calls
+                if _tool_calls:
+                    tool_calls.extend(_tool_calls)
+
                 text = chunk.message.content or ""
                 buffer += text
 
@@ -72,8 +87,38 @@ class Speaker:
                 await self.tts_queue.put(buffer.strip())
                 answer += buffer.strip()
 
-            self.update_content("chat", answer)
+            if tool_calls:
+                tool_answers = await self.start_tools(tool_calls)
+
+                for tool_answer in tool_answers:
+                    self.update_content("tool", tool_answer)
+
+                print("Recalling Senko...")
+                await self.text_analiz.put("")
+
+            answer = emoji.replace_emoji(answer, "")
+
+            self.update_content("assistant", answer)
             self.on_response(answer)
+
+    async def start_tools(self, tool_calls: List[Message.ToolCall]) -> List[str]:
+        results: List[str] = []
+        if not tool_calls:
+            return []
+
+        for call in tool_calls:
+            try:
+                func = self.tools[call.function.name]
+            except KeyError:
+                continue
+
+            print(f"{call.function.name}({dict(**call.function.arguments)})")
+            results.append(await func(**call.function.arguments))
+
+        print(results)
+        return results
+
+
 
     async def preload_model(self):
         await self.client.chat(
