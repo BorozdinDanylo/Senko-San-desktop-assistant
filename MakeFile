@@ -1,0 +1,4 @@
+start:
+	PYTHONPATH=src \
+	LD_LIBRARY_PATH="$(CURDIR)/.venv/lib/python3.14/site-packages/nvidia/cublas/lib:$$LD_LIBRARY_PATH" \
+	uv run python src/pipeline/main.py

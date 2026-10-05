@@ -1,4 +1,4 @@
-from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_TEMPERATURE, SENKO_THINK_MODE
+from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_TEMPERATURE, SENKO_THINK_MODE, NewMessage
 from pipeline.events_control import EventManager
 from typing import List, Callable, Dict, Any, Coroutine
 from ollama import AsyncClient, Message, ChatResponse
@@ -58,8 +58,8 @@ class Speaker:
             )
 
             EventManager.stop_talking()
+            self.update_content("assistant", NewMessage.get_message())
 
-            answer = ""
             buffer = ""
             tool_calls: List[Message.ToolCall] = []
             async for chunk in stream:
@@ -67,13 +67,12 @@ class Speaker:
                 if _tool_calls:
                     tool_calls.extend(_tool_calls)
 
-                text = chunk.message.content or ""
+                text = emoji.replace_emoji(chunk.message.content or "")
                 buffer += text
 
                 if any(char in buffer for char in ".!?…"):
                     print(buffer)
-                    await self.tts_queue.put(buffer.strip())
-                    answer += f"{buffer.strip()} "
+                    await self.tts_queue.put(buffer)
                     buffer = ""
                 if chunk["done"]:
                     print()
@@ -81,10 +80,9 @@ class Speaker:
                     print(f"Loading:     {chunk['load_duration'] / 1e9:.2f}s")
                     print(f"Prompt eval: {chunk['prompt_eval_duration'] / 1e9:.2f}s")
                     print(f"Generation:  {chunk['eval_duration'] / 1e9:.2f}s")
-            if buffer.strip():
+            if buffer:
                 print(buffer)
-                await self.tts_queue.put(buffer.strip())
-                answer += buffer.strip()
+                await self.tts_queue.put(buffer)
 
             if tool_calls:
                 tool_answers = await self.start_tools(tool_calls)
@@ -95,7 +93,7 @@ class Speaker:
                 print("Recalling Senko...")
                 await self.text_analiz.put("")
 
-            answer = emoji.replace_emoji(answer, "")
+            answer: str = NewMessage.get_message()
 
             self.update_content("assistant", answer)
             await EventManager.add_answer(answer)
