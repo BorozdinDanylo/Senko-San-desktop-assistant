@@ -1,48 +1,66 @@
-from tools import tool, Tool
+from tools.types.tool import Tool
+from pydantic import Field
+from typing import Annotated, Literal
 import pexpect
 import pyte
-import asyncio
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
 
+
+@Tool.initialize_class
 class TerminalTool(Tool):
-    def __init__(self):
-        super().__init__()
+    rows: int
+    cols: int
+    process: pexpect.pty_spawn.spawn
+    screen_buffer: pyte.Screen
+    stream: pyte.Stream
+    prompt: Literal["__SENKO_PROMPT__"] = "__SENKO_PROMPT__"
 
-        self.rows = 30
-        self.cols = 120
+    @classmethod
+    def initialize(cls):
+        cls.rows = 30
+        cls.cols = 120
 
         env = os.environ.copy()
         sudo_password = env.pop("SUDO_PASSWORD")
 
-        self.process = pexpect.spawn(
+        cls.process = pexpect.spawn(
              "/usr/bin/sudo",
             ["-u", "Senka", "-H", "/bin/bash"],
             encoding="utf-8",
             echo=False,
         )
 
-        self.process.setwinsize(
-            self.rows,
-            self.cols,
+        cls.process.setwinsize(
+            cls.rows,
+            cls.cols,
         )
 
-        self.screen_buffer = pyte.Screen(self.rows, self.cols)
-        self.stream = pyte.Stream(self.screen_buffer)
+        cls.screen_buffer = pyte.Screen(cls.rows, cls.cols)
+        cls.stream = pyte.Stream(cls.screen_buffer)
 
-        self.process.expect(r"\[sudo\] password for .*:")
-        self.process.sendline(sudo_password)
+        cls.process.expect(r"\[sudo\] password for .*:")
+        cls.process.sendline(sudo_password)
 
-        self.prompt = "__SENKO_PROMPT__"
+        cls.prompt = "__SENKO_PROMPT__"
 
-        self.process.sendline(
-            f"export PS1='{self.prompt} '"
+        cls.process.sendline(
+            f"export PS1='{cls.prompt} '"
         )
 
-        self.process.expect(self.prompt)
+        cls.process.expect(cls.prompt)
 
-    @tool
-    async def command(self, command: str) -> str:
+    @classmethod
+    @Tool.tool
+    async def command(
+            cls,
+            command: Annotated[
+                str,
+                Field(description="Command to execute."),
+            ]
+    ) -> str:
         """
         Execute a normal non-interactive shell command and wait until it finishes.
 
@@ -52,14 +70,15 @@ class TerminalTool(Tool):
         """
 
         return await asyncio.to_thread(
-            self._command,
+            cls._command,
             command,
         )
 
-    def _command(self, command: str) -> str:
-        self.process.sendline(command)
-        self.process.expect(self.prompt)
-        output = self.process.before
+    @classmethod
+    def _command(cls, command: str) -> str:
+        cls.process.sendline(command)
+        cls.process.expect(cls.prompt)
+        output = cls.process.before
 
         if isinstance(output, bytes):
             output = output.decode("utf-8", errors="replace")
@@ -68,18 +87,20 @@ class TerminalTool(Tool):
 
         return output.strip()
 
-    @tool
-    async def read(self) -> str:
+    @classmethod
+    @Tool.tool
+    async def read(cls) -> str:
         """
         Read currently available terminal output without waiting for a command to finish.
         """
-        return await asyncio.to_thread(self._read)
+        return await asyncio.to_thread(cls._read)
 
-    def _read(self) -> str:
+    @classmethod
+    def _read(cls) -> str:
         output = ""
         while True:
             try:
-                data = self.process.read_nonblocking(
+                data = cls.process.read_nonblocking(
                     4096,
                     .5
                 )
@@ -91,12 +112,19 @@ class TerminalTool(Tool):
             except (pexpect.TIMEOUT, pexpect.EOF):
                 break
 
-        self.stream.feed(output)
+        cls.stream.feed(output)
 
-        return "\n".join(self.screen_buffer.display)
+        return "\n".join(cls.screen_buffer.display)
 
-    @tool
-    async def write(self, command: str) -> str:
+    @classmethod
+    @Tool.tool
+    async def write(
+            cls,
+            text: Annotated[
+                str,
+                Field(description="Text to write to the terminal"),
+            ]
+    ) -> str:
         """
         Write text directly into the current terminal session.
 
@@ -105,20 +133,20 @@ class TerminalTool(Tool):
         """
 
         return await asyncio.to_thread(
-            self._write,
-            command,
+            cls._write,
+            text,
         )
 
-    def _write(self, command: str) -> str:
-        self.process.send(command)
+    @classmethod
+    def _write(cls, command: str) -> str:
+        cls.process.send(command)
 
-        return self._read()
+        return cls._read()
 
 
 if __name__ == '__main__':
-    from dotenv import load_dotenv
     import asyncio
-    load_dotenv()
 
-    test_tool = TerminalTool()
-    print(asyncio.run(test_tool.tools["command"]("ls -lh")))
+    print(Tool.tools_shamas)
+    print(Tool.tools)
+
