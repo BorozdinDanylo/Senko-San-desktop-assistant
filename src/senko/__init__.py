@@ -1,16 +1,25 @@
+from typing import Literal
 from pathlib import Path
+from openai.types.shared_params import Reasoning, ChatModel
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-SENKO_PROMPT_FILE = BASE_DIR / "senko_prompt.txt"
+SENKO_PROMPT_FILE = BASE_DIR / "senko_prompt.md"
 
 with open(SENKO_PROMPT_FILE, "r") as f:
     SENKO_PROMPT = f.read()
 
 # Senko-San config
-SENKO_MODEL_NAME = "qwen3:14b"
-SENKO_THINK_MODE = False
-SENKO_TEMPERATURE = .9
+type ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+
+SENKO_MODEL_NAME: ChatModel = "gpt-5.6-luna"
+SENKO_THINK_MODE: ReasoningEffort = "low"
+SENKO_TEMPERATURE = .7
+
+SENKO_REASONING_MODE: Reasoning = {
+    "effort": SENKO_THINK_MODE,
+}
+
 
 
 class NewMessage:

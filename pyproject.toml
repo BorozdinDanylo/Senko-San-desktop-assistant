@@ -19,4 +19,5 @@ dependencies = [
     "pexpect>=4.9.0",
     "pyte>=0.8.2",
     "emoji>=2.15.0",
+    "openai>=3.24.0",
 ]
