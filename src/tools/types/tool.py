@@ -80,15 +80,6 @@ class Tool:
         return new_tool_shema.model_dump()
 
     @classmethod
-    async def execute_tool(cls, tool_name: str, kwargs: dict[str, Any]) -> str:
-        tool: F | None = cls.tools.get(tool_name, None)
-
-        if not tool:
-            raise TypeError("Tool not found")
-
-        return await tool(**kwargs)
-
-    @classmethod
     def initialize(cls):
         pass
 
