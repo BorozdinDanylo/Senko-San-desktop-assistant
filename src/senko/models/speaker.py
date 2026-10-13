@@ -1,6 +1,7 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_REASONING_MODE, NewMessage
 from pipeline.events_control import EventManager
-from typing import Callable, Any, Coroutine, Literal, cast
+from tools.types.tool import Tool
+from typing import Literal, cast
 from openai import AsyncOpenAI, AsyncStream
 from openai.types.responses import (
     ResponseInputItemParam,
@@ -14,11 +15,7 @@ from openai.types.responses import (
     ResponseReasoningItem,
 )
 import asyncio
-import json
 import emoji
-
-
-type ToolFunction = dict[str, Callable[..., Coroutine[Any, Any, str]]]
 
 
 class Speaker:
@@ -26,14 +23,12 @@ class Speaker:
             self,
             text_analiz: asyncio.Queue[str],
             tts_queue: asyncio.Queue[str],
-            tools: ToolFunction,
     ):
 
         self.text_analiz = text_analiz
         self.tts_queue = tts_queue
 
         self.history: ResponseInputParam = []
-        self.tools = tools
         self.context: str = ""
 
         self.client: AsyncOpenAI = AsyncOpenAI()
@@ -79,6 +74,8 @@ class Speaker:
             stream: AsyncStream[ResponseStreamEvent] = await self.client.responses.create(
                 model=SENKO_MODEL_NAME,
                 input=messages,
+                tools=Tool.tools_shamas,
+                tool_choice="auto",
                 reasoning=SENKO_REASONING_MODE,
                 stream=True,
             )
@@ -149,19 +146,14 @@ class Speaker:
             self.update_content("assistant", answer)
             await EventManager.add_answer(answer)
 
-    async def start_tools(self, tool_calls: list[ResponseFunctionToolCall]) -> list[str]:
+    @staticmethod
+    async def start_tools(tool_calls: list[ResponseFunctionToolCall]) -> list[str]:
         results: list[str] = []
         if not tool_calls:
             return []
 
         for call in tool_calls:
-            try:
-                func = self.tools[call.name]
-            except KeyError:
-                continue
-
-            print(f"{call.name}({json.loads(call.arguments)})")
-            results.append(await func(*json.loads(call.arguments)))
+            await Tool.execute(call)
 
         print(results)
         return results

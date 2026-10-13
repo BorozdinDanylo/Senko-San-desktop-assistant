@@ -1,23 +1,28 @@
 from .tool_shema import ToolShema, Parameter, Properties
 from pydantic import TypeAdapter, Field
 from pydantic.fields import FieldInfo
+from openai.types.responses import ResponseFunctionToolCall, FunctionToolParam
+from openai.types.responses.response_input_param import FunctionCallOutput
 from collections.abc import Callable, Awaitable
 from typing import get_type_hints, Annotated, Any, get_args, get_origin
 import inspect
+import json
 
 type F = Callable[..., Awaitable[str]]
 type FDict = dict[str, F]
 
 FDictAdapter: TypeAdapter[FDict] = TypeAdapter(FDict)
+FunctionToolParamAdapter: TypeAdapter[FunctionToolParam] = TypeAdapter(FunctionToolParam)
 
 type Arg[T] = Annotated[
     T,
     Field(description="A tool argument"),
 ]
+type Args = dict[str, Arg[Any]]
 
 
 class Tool:
-    tools_shamas: list[dict[str, Any]] = []
+    tools_shamas: list[FunctionToolParam] = []
     tools: FDict = {}
 
     def __init_subclass__(cls, **kwargs) -> None:
@@ -43,8 +48,8 @@ class Tool:
         return fun
 
     @staticmethod
-    def tool_to_shema(fun: F, prefix: str) -> dict[str, Any]:
-        hints: dict[str, Arg[Any]] = get_type_hints(fun, include_extras=True)
+    def tool_to_shema(fun: F, prefix: str) -> FunctionToolParam:
+        hints: Args = get_type_hints(fun, include_extras=True)
 
         new_tool_shema: ToolShema = ToolShema(
             name=f"{prefix}_{fun.__name__}",
@@ -77,7 +82,32 @@ class Tool:
             else:
                 raise TypeError("All params must be annotated")
 
-        return new_tool_shema.model_dump()
+        return FunctionToolParamAdapter.validate_python(new_tool_shema.model_dump())
+
+    @classmethod
+    async def execute(cls, tool_call: ResponseFunctionToolCall) -> FunctionCallOutput:
+        try:
+            func: F = cls.tools[tool_call.name]
+            args: Args = json.loads(tool_call.arguments)
+
+            result: str = await func(**args)
+
+            output: dict[str, Any] = {
+                "success": True,
+                "result": result,
+            }
+        except Exception as e:
+            output: dict[str, Any] = {
+                "success": False,
+                "error": e.__name__,
+                "message": str(e),
+            }
+
+        return FunctionCallOutput(
+            call_id=tool_call.call_id,
+            type="function_call_output",
+            output=json.dumps(output),
+        )
 
     @classmethod
     def initialize(cls):
