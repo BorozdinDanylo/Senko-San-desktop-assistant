@@ -6,7 +6,6 @@ from listener.whisper.microphone_recording import microphone
 from listener.text_combining.text_input import TextInput
 from senko.models.speaker import Speaker
 from voice.model.senko import SenkoVoice
-from tools.terminal.terminal_tool import TerminalTool
 import asyncio
 
 
@@ -24,8 +23,7 @@ async def worker():
 
     stt = SpeechToText(audio_queue, transcription_queue)
     text_input = TextInput(transcription_queue, text_analiz)
-    terminal = TerminalTool()
-    senko = Speaker(text_analiz, tts_queue, tools={**terminal.tools})
+    senko = Speaker(text_analiz, tts_queue)
     voice = SenkoVoice(tts_queue)
 
     await asyncio.gather(

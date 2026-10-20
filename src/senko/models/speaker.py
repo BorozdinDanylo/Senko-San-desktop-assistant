@@ -1,8 +1,9 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_REASONING_MODE, NewMessage
 from pipeline.events_control import EventManager
-from tools.types.tool import Tool
+from tools import Tool
 from typing import Literal, cast
 from openai import AsyncOpenAI, AsyncStream
+from openai.types.responses.response_input_param import FunctionCallOutput
 from openai.types.responses import (
     ResponseInputItemParam,
     ResponseInputParam,
@@ -131,12 +132,13 @@ class Speaker:
             if tool_calls:
                 tool_answers = await self.start_tools(tool_calls)
 
-                for tool_call, tool_answer in zip(tool_calls, tool_answers):
-                    self.history.append({
-                        "type": "function_call_output",
-                        "call_id": tool_call.call_id,
-                        "output": tool_answer,
-                    })
+                if len(tool_calls) != len(tool_answers):
+                    raise RuntimeError(
+                        f"Tool calls: {len(tool_calls)}, "
+                        f"Tool answers: {len(tool_answers)}"
+                    )
+
+                self.history.extend(tool_answers)
 
                 print("Recalling Senko...")
                 await self.text_analiz.put("")
@@ -147,13 +149,13 @@ class Speaker:
             await EventManager.add_answer(answer)
 
     @staticmethod
-    async def start_tools(tool_calls: list[ResponseFunctionToolCall]) -> list[str]:
-        results: list[str] = []
+    async def start_tools(tool_calls: list[ResponseFunctionToolCall]) -> list[FunctionCallOutput]:
+        results: list[FunctionCallOutput] = []
         if not tool_calls:
             return []
 
         for call in tool_calls:
-            await Tool.execute(call)
+            results.append(await Tool.execute(call))
 
         print(results)
         return results

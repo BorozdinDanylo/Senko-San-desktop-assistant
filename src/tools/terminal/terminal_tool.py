@@ -1,6 +1,7 @@
 from tools.types.tool import Tool
 from pydantic import Field
 from typing import Annotated, Literal
+import asyncio
 import pexpect
 import pyte
 import os
@@ -51,6 +52,8 @@ class TerminalTool(Tool):
         )
 
         cls.process.expect(cls.prompt)
+
+        cls.command("cd /home/Senko/")
 
     @classmethod
     @Tool.tool
@@ -143,10 +146,4 @@ class TerminalTool(Tool):
 
         return cls._read()
 
-
-if __name__ == '__main__':
-    import asyncio
-
-    print(Tool.tools_shamas)
-    print(Tool.tools)
 
