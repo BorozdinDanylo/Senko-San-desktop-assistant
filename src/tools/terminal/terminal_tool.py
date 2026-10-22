@@ -24,14 +24,11 @@ class TerminalTool(Tool):
         cls.rows = 30
         cls.cols = 120
 
-        env = os.environ.copy()
-        sudo_password = env.pop("SUDO_PASSWORD")
-
         cls.process = pexpect.spawn(
-            "/usr/bin/sudo",
-            ["-u", "Senka", "-H", "/bin/bash"],
+            "/bin/bash",
             encoding="utf-8",
             echo=False,
+            dimensions=(cls.rows, cls.cols),
         )
 
         cls.process.setwinsize(
@@ -39,21 +36,14 @@ class TerminalTool(Tool):
             cls.cols,
         )
 
-        cls.screen_buffer = pyte.Screen(cls.rows, cls.cols)
+        cls.screen_buffer = pyte.Screen(cls.cols, cls.rows)
         cls.stream = pyte.Stream(cls.screen_buffer)
-
-        cls.process.expect(r"\[sudo\] password for .*:")
-        cls.process.sendline(sudo_password)
-
-        cls.prompt = "__SENKO_PROMPT__"
 
         cls.process.sendline(
             f"export PS1='{cls.prompt} '"
         )
 
         cls.process.expect(cls.prompt)
-
-        cls.command("cd /home/Senko/")
 
     @classmethod
     @Tool.tool

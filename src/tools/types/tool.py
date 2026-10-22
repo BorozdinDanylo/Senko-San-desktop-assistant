@@ -39,7 +39,14 @@ class Tool:
 
         cls.tools.update(FDictAdapter.validate_python(tools))
 
-        for tool in cls.tools.values():
+        print(
+            "Registering:",
+            cls.__module__,
+            cls.__qualname__,
+            list(tools),
+        )
+
+        for tool in tools.values():
             cls.tools_shamas.append(cls.tool_to_shema(tool, prefix))
 
     @staticmethod

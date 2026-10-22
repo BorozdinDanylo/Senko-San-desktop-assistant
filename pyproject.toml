@@ -20,4 +20,5 @@ dependencies = [
     "pyte>=0.8.2",
     "emoji>=2.15.0",
     "openai>=3.24.0",
+    "openai-codex>=0.163.0",
 ]
