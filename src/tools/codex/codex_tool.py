@@ -1,25 +1,32 @@
 from tools.types.tool import Tool
-from pipeline.events_control.event_manager import EventManager
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import Field
+from dataclasses import dataclass
 from openai_codex import AsyncCodex, AsyncThread, AsyncTurnHandle
 from openai_codex.models import (
     ItemCompletedNotification,
-    TurnCompletedNotification
+    TurnCompletedNotification,
 )
 from openai_codex.types import TurnStatus, ThreadItem
 from openai_codex.generated.v2_all import AgentMessageThreadItem
 from typing import Annotated
 from pathlib import Path
 import asyncio
+import os
 
 
-LOG_PATH = Path("/home/Senko/Codex/logs")
+LOG_PATH = Path(os.environ["LOG_DIR"])
 
 
-class Task(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+@dataclass()
+class CodexThread:
+    thread: AsyncThread
+    busy: bool
 
+
+@dataclass()
+class Task:
     working_directory: str
+    working_thread: CodexThread
     turn: AsyncTurnHandle
 
 
@@ -27,6 +34,7 @@ class Task(BaseModel):
 class CodexTool(Tool):
     codex: AsyncCodex
     tasks: dict[str, Task] = {}
+    threads: dict[str, CodexThread] = {}
 
 
     @classmethod
@@ -59,21 +67,27 @@ class CodexTool(Tool):
                     ),
                 ),
             ],
+            thread_id: Annotated[
+                str | None,
+                Field(
+                    description=(
+                        "ID of an existing Codex conversation thread to continue. "
+                        "Use null to create a new independent thread. "
+                        "Reusing a thread preserves its previous conversation context. "
+                        "The ID must belong to an existing thread."
+                    )
+                )
+            ] = None
     ) -> str:
         """
-        Start a new Codex coding task in the background.
+        Start a Codex coding task in the background.
 
-        Codex can read, create, modify, and test code within the
-        specified working directory.
+        Creates a new conversation thread if thread_id is None,
+        or continues an existing thread using its previous context.
 
-        Only one Codex task can run in the same working directory
-        at a time. Tasks in different directories can run concurrently.
-
-        The task runs asynchronously, allowing you to continue
-        interacting with the user while Codex works.
-
-        Returns a unique Turn ID that can be used to monitor progress,
-        retrieve results, or cancel the task.
+        Returns the thread ID and task ID immediately without waiting
+        for the task to finish. The result will be delivered asynchronously
+        when Codex completes the task.
         """
 
         for task in cls.tasks.values():
@@ -85,7 +99,25 @@ class CodexTool(Tool):
                     "Wait for it to finish or cancel it before starting another task."
                 )
 
-        thread: AsyncThread = await cls.codex.thread_start()
+        if thread_id:
+            thread_info: CodexThread | None = cls.threads.get(thread_id, None)
+
+            if thread_info is None:
+                return "Thread ID not found."
+
+            if thread_info.busy:
+                return "Thread ID is busy."
+
+            thread: AsyncThread = thread_info.thread
+
+        else:
+            thread: AsyncThread = await cls.codex.thread_start()
+
+        codex_thread: CodexThread = CodexThread(
+            thread=thread,
+            busy=True,
+        )
+
         turn: AsyncTurnHandle = await thread.turn(
             prompt,
             cwd=working_directory,
@@ -93,18 +125,27 @@ class CodexTool(Tool):
 
         turn_id: str = turn.id
 
-        cls.tasks[turn_id] = Task.model_validate({
-            "working_directory": working_directory,
-            "turn": turn,
-        })
+        cls.tasks[turn_id] = Task(
+            working_directory=working_directory,
+            working_thread=codex_thread,
+            turn=turn,
+        )
 
         asyncio.create_task(cls.checking_task(cls.tasks[turn_id], turn_id))
+
+        cls.threads[thread.id] = CodexThread(
+            thread=thread,
+            busy=True,
+        )
 
         return (
             "Codex task started successfully in the background. "
             f"Turn ID: {turn_id}. "
             f"Working directory: '{working_directory}'. "
+            f"Thread ID: {thread_id}\n"
             "Use this Turn ID to check progress or cancel the task. "
+            "Use the Thread ID to continue an existing conversation with Codex, "
+            "preserving previous context without repeating earlier instructions or information."
             "You will be notified when the task finishes."
         )
 
@@ -122,16 +163,24 @@ class CodexTool(Tool):
 
     @classmethod
     async def checking_task(cls, task: Task, turn_id: str):
+        from pipeline import senko
+
+        print("Start Chacking Task")
+
         log_file = LOG_PATH / f"{turn_id}.log"
         final_message: str = "<empty>"
 
         try:
             with log_file.open("a", encoding="utf-8") as f:
                 async for event in task.turn.stream():
+                    print("For Loop Is Started")
+
                     if isinstance(event.payload, ItemCompletedNotification):
                         item: ThreadItem = event.payload.item
 
                         text: str | None = getattr(item.root, "text", None)
+
+                        print(f"{type(item.root)=} {text=}")
 
                         if text:
                             f.write(text + "\n")
@@ -143,7 +192,9 @@ class CodexTool(Tool):
                     elif isinstance(event.payload, TurnCompletedNotification):
                         status: TurnStatus = event.payload.turn.status
 
-                        await EventManager.add_answer(
+                        print("For Loop Is Finishing")
+
+                        await senko.text_analiz.put(
                             "[Background Codex Task Result]\n"
                             "Source: Codex\n"
                             f"Turn ID: {turn_id}\n"
@@ -156,7 +207,9 @@ class CodexTool(Tool):
                         )
 
         except Exception as exc:
-            await EventManager.add_answer(
+            print(f"Error in checking task status: {exc}")
+
+            await senko.text_analiz.put(
                 "[Background Codex Task Error]\n"
                 f"Turn ID: {turn_id}\n"
                 f"Working directory: {task.working_directory}\n"
@@ -164,7 +217,11 @@ class CodexTool(Tool):
             )
 
         finally:
-            cls.tasks.pop(turn_id, None)
+            task: Task | None = cls.tasks.pop(turn_id, None)
+            if task:
+                task.working_thread.busy = False
+
+            print("Test Was Finished")
 
 
 

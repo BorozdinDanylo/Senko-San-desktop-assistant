@@ -4,7 +4,6 @@ from typing import Annotated, Literal
 import asyncio
 import pexpect
 import pyte
-import os
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,6 +25,7 @@ class TerminalTool(Tool):
 
         cls.process = pexpect.spawn(
             "/bin/bash",
+            ["--noprofile", "--norc"],
             encoding="utf-8",
             echo=False,
             dimensions=(cls.rows, cls.cols),

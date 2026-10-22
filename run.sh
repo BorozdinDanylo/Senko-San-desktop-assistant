@@ -9,4 +9,4 @@ export PYTHONPATH="$PROJECT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
 cd "$PROJECT_DIR"
 
-exec uv run python -m listener.main
+exec uv run python -m pipeline.main

@@ -812,6 +812,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyte" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "sounddevice" },
 ]
 
@@ -832,6 +833,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyte", specifier = ">=0.8.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sounddevice", specifier = ">=0.5.5" },
 ]
 

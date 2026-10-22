@@ -39,13 +39,6 @@ class Tool:
 
         cls.tools.update(FDictAdapter.validate_python(tools))
 
-        print(
-            "Registering:",
-            cls.__module__,
-            cls.__qualname__,
-            list(tools),
-        )
-
         for tool in tools.values():
             cls.tools_shamas.append(cls.tool_to_shema(tool, prefix))
 
@@ -78,9 +71,18 @@ class Tool:
                 if not field.description:
                     raise TypeError("All params must be with description")
 
+                schema = TypeAdapter(base_type).json_schema()
+
+                if "anyOf" in schema:
+                    variants = schema["anyOf"]
+
+                    if all(set(item) == {"type"} for item in variants):
+                        schema["type"] = [item["type"] for item in variants]
+                        del schema["anyOf"]
+
                 new_tool_shema.parameters.properties.update({
                     arg_name: Properties(
-                        type=TypeAdapter(base_type).json_schema()["type"],
+                        type=schema["type"],
                         description=inspect.cleandoc(field.description),
                     )
                 })
@@ -106,7 +108,7 @@ class Tool:
         except Exception as e:
             output: dict[str, Any] = {
                 "success": False,
-                "error": e.__name__,
+                "error": type(e).__name__,
                 "message": str(e),
             }
 

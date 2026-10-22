@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class Properties(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
-    type: str
+    type: str | list[str]
     description: str
 
 

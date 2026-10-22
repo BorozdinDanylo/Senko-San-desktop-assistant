@@ -6,7 +6,7 @@ from openai.types.shared_params import Reasoning, ChatModel
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SENKO_PROMPT_FILE = BASE_DIR / "senko_prompt.md"
 
-with open(SENKO_PROMPT_FILE, "r") as f:
+with open(SENKO_PROMPT_FILE, "r", encoding="utf-8") as f:
     SENKO_PROMPT = f.read()
 
 # Senko-San config
@@ -23,6 +23,7 @@ SENKO_REASONING_MODE: Reasoning = {
 
 
 class NewMessage:
+    generation: int = 0
     full_text: str = ""
     spoken_text: str = ""
 
@@ -33,7 +34,7 @@ class NewMessage:
 
     @classmethod
     def spoken(cls, text: str):
-        if text not in cls.full_text:
+        if not cls.full_text[len(cls.spoken_text):].startswith(f"{text} "):
             return
 
         cls.spoken_text += f"{text} "
@@ -41,23 +42,25 @@ class NewMessage:
 
     @classmethod
     def clear(cls):
+        cls.generation += 1
         cls.full_text = ""
         cls.spoken_text = ""
 
     @classmethod
-    def get_message(cls) -> str:
+    def get_message(cls, *, clear: bool = True) -> str:
         if cls.full_text == "":
             return ""
 
-        unspoken_text = cls.full_text.replace(cls.spoken_text, "", 1)
+        unspoken_text = cls.full_text[len(cls.spoken_text):] if cls.full_text.startswith(cls.spoken_text) else cls.full_text
 
         message: str = f"""
             Spoken text:
-            {cls.spoken_text or "<empty>"}
+            {cls.spoken_text.strip() or "<empty>"}
             Unspoken text:
-            {unspoken_text or "<empty>"}
+            {unspoken_text.strip() or "<empty>"}
         """
 
-        cls.clear()
+        if clear:
+            cls.clear()
 
         return message
