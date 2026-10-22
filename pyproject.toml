@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "pyyaml>=6.0.3",
     "faster-whisper>=1.2.1",
     "huggingface-hub>=1.27.0",
     "numpy>=2.5.1",
@@ -20,4 +21,5 @@ dependencies = [
     "pyte>=0.8.2",
     "emoji>=2.15.0",
     "openai>=3.24.0",
+    "openai-codex>=0.163.0",
 ]

@@ -14,12 +14,14 @@ class SenkoVoice:
         self.tts_queue: asyncio.Queue[str] = tts_queue
         self.audio_queue: asyncio.Queue[AudioDict] = asyncio.Queue[AudioDict]()
 
+    async def run(self):
         asyncio.create_task(self.stop_talking())
 
     async def tts_worker(self):
         while True:
             text = await self.tts_queue.get()
 
+            generation = NewMessage.generation
             audio = await self.client.tts.convert(
                 text=text,
                 reference_id=SENKO_SAN_VOICE_ID,
@@ -27,11 +29,13 @@ class SenkoVoice:
                 format="mp3",
             )
 
-            NewMessage.add_text(text)
+            if generation != NewMessage.generation:
+                continue
 
             await self.audio_queue.put(AudioDict(
                 text=text,
                 audio=audio,
+                generation=generation,
             ))
 
     async def speak(self):
@@ -40,7 +44,8 @@ class SenkoVoice:
 
             await asyncio.to_thread(play, audio["audio"])
 
-            NewMessage.spoken(audio["text"])
+            if audio["generation"] == NewMessage.generation:
+                NewMessage.spoken(audio["text"])
 
     async def stop_talking(self):
         while True:

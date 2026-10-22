@@ -18,6 +18,7 @@ class TextInput:
 
         self.client: AsyncClient = AsyncClient()
 
+    async def run(self):
         asyncio.create_task(self.add_senko_answer())
 
     def update_content(self, text: str):
@@ -100,7 +101,7 @@ class TextInput:
             print(content or "")
 
             if not content:
-                return
+                continue
 
             try:
                 result = RouterResult.model_validate_json(content)

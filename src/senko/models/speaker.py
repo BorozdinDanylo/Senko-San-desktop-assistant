@@ -69,6 +69,10 @@ class Speaker:
         print("Senko-San is ready")
         while True:
             text = await self.text_analiz.get()
+            EventManager.stop_talking()
+            await asyncio.sleep(0)  # Drain queued speech before the next response.
+            previous_answer = NewMessage.get_message()
+            self.update_content("assistant", previous_answer)
             self.update_content("user", text)
             messages = self.get_message()
 
@@ -80,9 +84,6 @@ class Speaker:
                 reasoning=SENKO_REASONING_MODE,
                 stream=True,
             )
-
-            EventManager.stop_talking()
-            self.update_content("assistant", NewMessage.get_message())
 
             buffer = ""
             tool_calls: list[ResponseFunctionToolCall] = []
@@ -97,6 +98,7 @@ class Speaker:
 
                         if any(char in buffer for char in ".!?…"):
                             print(buffer)
+                            NewMessage.add_text(buffer)
                             await self.tts_queue.put(buffer)
                             buffer = ""
 
@@ -127,6 +129,7 @@ class Speaker:
 
             if buffer:
                 print(buffer)
+                NewMessage.add_text(buffer)
                 await self.tts_queue.put(buffer)
 
             if tool_calls:
@@ -143,10 +146,10 @@ class Speaker:
                 print("Recalling Senko...")
                 await self.text_analiz.put("")
 
-            answer = NewMessage.get_message()
-
-            self.update_content("assistant", answer)
-            await EventManager.add_answer(answer)
+            # Give the transcription router current context without resetting playback tracking.
+            answer = NewMessage.get_message(clear=False)
+            if answer:
+                await EventManager.add_answer(answer)
 
     @staticmethod
     async def start_tools(tool_calls: list[ResponseFunctionToolCall]) -> list[FunctionCallOutput]:

@@ -9,4 +9,5 @@ SENKO_SAN_VOICE_ID = os.environ["SENKO_SAN_VOICE_ID"]
 class AudioDict(TypedDict):
     text: str
     audio: bytes
+    generation: int
 
