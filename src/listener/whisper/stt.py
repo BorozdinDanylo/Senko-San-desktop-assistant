@@ -1,13 +1,11 @@
+from pipeline.components.queues import Queues
 from faster_whisper import WhisperModel
 import numpy as np
 import asyncio
 
 
 class SpeechToText:
-    def __init__(self, audio_queue: asyncio.Queue[np.ndarray], transcription_queue: asyncio.Queue[str]):
-        self.audio_queue = audio_queue
-        self.transcription_queue = transcription_queue
-
+    def __init__(self):
         self.model = WhisperModel(
             "large-v3",
             device="cuda",
@@ -29,7 +27,7 @@ class SpeechToText:
 
     async def worker(self):
         while True:
-            audio = await self.audio_queue.get()
+            audio = await Queues.audio_queue.get()
 
             text = await asyncio.to_thread(
                 self.transcribe,
@@ -39,4 +37,4 @@ class SpeechToText:
 
             if text:
                 print(text)
-                await self.transcription_queue.put(text)
+                await Queues.transcription_queue.put(text)

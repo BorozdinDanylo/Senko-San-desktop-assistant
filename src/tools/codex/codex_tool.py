@@ -163,7 +163,8 @@ class CodexTool(Tool):
 
     @classmethod
     async def checking_task(cls, task: Task, turn_id: str):
-        from pipeline import senko
+        from pipeline.components import Runtime
+        runtime: Runtime = Runtime()
 
         print("Start Chacking Task")
 
@@ -194,7 +195,7 @@ class CodexTool(Tool):
 
                         print("For Loop Is Finishing")
 
-                        await senko.text_analiz.put(
+                        await runtime.senko.text_analiz.put(
                             "[Background Codex Task Result]\n"
                             "Source: Codex\n"
                             f"Turn ID: {turn_id}\n"
@@ -209,7 +210,7 @@ class CodexTool(Tool):
         except Exception as exc:
             print(f"Error in checking task status: {exc}")
 
-            await senko.text_analiz.put(
+            await runtime.senko.text_analiz.put(
                 "[Background Codex Task Error]\n"
                 f"Turn ID: {turn_id}\n"
                 f"Working directory: {task.working_directory}\n"

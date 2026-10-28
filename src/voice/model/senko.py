@@ -1,25 +1,21 @@
 from voice.model import SENKO_SAN_VOICE_ID, SENKO_SAN_API_KEY
 from voice import clear_queue
-from pipeline import stop_talking_event
+from pipeline.components import Queues, Events
 from ..model import AudioDict
 from senko import NewMessage
-from fishaudio import AsyncFishAudio
+from fishaudio.client import AsyncFishAudio
 from fishaudio.utils import play
 import asyncio
 
 
 class SenkoVoice:
-    def __init__(self, tts_queue: asyncio.Queue[str]):
+    def __init__(self):
         self.client: AsyncFishAudio = AsyncFishAudio(api_key=SENKO_SAN_API_KEY)
-        self.tts_queue: asyncio.Queue[str] = tts_queue
         self.audio_queue: asyncio.Queue[AudioDict] = asyncio.Queue[AudioDict]()
-
-    async def run(self):
-        asyncio.create_task(self.stop_talking())
 
     async def tts_worker(self):
         while True:
-            text = await self.tts_queue.get()
+            text = await Queues.tts_queue.get()
 
             generation = NewMessage.generation
             audio = await self.client.tts.convert(
@@ -47,14 +43,10 @@ class SenkoVoice:
             if audio["generation"] == NewMessage.generation:
                 NewMessage.spoken(audio["text"])
 
+    @Events.on_interrupt
     async def stop_talking(self):
-        while True:
-            await stop_talking_event.wait()
-
-            clear_queue(self.tts_queue)
-            clear_queue(self.audio_queue)
-
-            stop_talking_event.clear()
+        clear_queue(Queues.tts_queue)
+        clear_queue(self.audio_queue)
 
 
 
