@@ -14,7 +14,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
             'type': 'function_call_output', 'call_id': 'call', 'output': '{"success":true}'
         }))
         with patch.dict(sys.modules, {'tools': types.SimpleNamespace(Tool=fake_tool)}):
-            from senko.models.speaker import Speaker
+            from senko import Speaker
         from openai.types.responses import ResponseFunctionToolCall
         call = ResponseFunctionToolCall(type='function_call', call_id='call', name='terminal_command', arguments='{"command":"true"}')
 
