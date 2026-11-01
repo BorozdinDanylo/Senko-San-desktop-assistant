@@ -3,6 +3,7 @@ from enum import IntEnum
 
 class Version(IntEnum):
     V1 = 1
+    V2 = 2
 
 
 class DataType(IntEnum):

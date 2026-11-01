@@ -1,5 +1,5 @@
 from senko_protocol.event import AsyncEvent
-from senko_protocol.typeing import AudioArray
+from senko_protocol.typing import AudioArray
 import numpy as np
 
 

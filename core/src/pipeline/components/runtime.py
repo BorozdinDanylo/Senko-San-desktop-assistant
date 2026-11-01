@@ -1,7 +1,7 @@
 from .events import Events
 from .queues import Queues
 from senko_protocol.meta import SingletonMeta
-from senko_protocol.typeing import AudioArray
+from senko_protocol.typing import AudioArray
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

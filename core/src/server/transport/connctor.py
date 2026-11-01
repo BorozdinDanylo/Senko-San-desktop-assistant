@@ -1,10 +1,20 @@
+from senko_protocol.enum import Version, DataType
+from abc import ABC, abstractmethod, abstractproperty
 import asyncio
-from abc import ABC, abstractmethod
-
-from senko_protocol.enum import Version
 
 
 class Connector(ABC):
+    writer: asyncio.StreamWriter | None
+    reader: asyncio.StreamReader | None
+
+    @abstractproperty
+    def reader(self) -> asyncio.StreamReader:
+        pass
+
+    @abstractproperty
+    def writer(self) -> asyncio.StreamWriter:
+        pass
+
     @abstractmethod
     async def handle_client(
             self,
@@ -13,9 +23,12 @@ class Connector(ABC):
     ):
         pass
 
-    @staticmethod
     @abstractmethod
-    async def response(response_message: str, writer: asyncio.StreamWriter, version: Version = Version.V1):
+    async def response(self, response_message: str, request_id: str, version: Version = Version.V1):
+        pass
+
+    @abstractmethod
+    async def send(self, body_message: bytes, dtype: DataType, version: Version = Version.V1):
         pass
 
     @abstractmethod

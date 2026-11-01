@@ -1,5 +1,5 @@
 from .enum import Version, DataType
-from pydantic import BaseModel, PositiveInt
+from pydantic import BaseModel, PositiveInt, Field
 
 
 def model_to_bytes(model: BaseModel) -> bytes:
@@ -10,6 +10,7 @@ class Header(BaseModel):
     version: Version
     type: DataType
     body_length: PositiveInt
+    request_id: str = Field(default="")
 
 
 class Request(BaseModel):

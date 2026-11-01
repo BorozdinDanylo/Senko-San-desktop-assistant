@@ -1,4 +1,4 @@
-from components import Queues
+from components import Events
 from time import monotonic
 from typing import Self, Literal
 import sounddevice as sd
@@ -8,7 +8,7 @@ import asyncio
 
 SAMPLE_RATE = 16_000
 MAX_SILENT_LENGTH = .8
-MIN_SPEECH_CHUNKS_LENGTH = 30
+MIN_SPEECH_CHUNKS_LENGTH = 12
 MIN_VOLUME = -35
 
 
@@ -16,7 +16,6 @@ def is_speaking(audio: np.ndarray) -> bool:
     rms = np.sqrt(np.mean(audio.astype(np.float64) ** 2))
     db = 20 * np.log10(max(rms, 1e-10))
 
-    print(db > MIN_VOLUME)
     return db > MIN_VOLUME
 
 
@@ -70,8 +69,12 @@ class Microphone:
                 and len(self.sound_buffer) > MIN_SPEECH_CHUNKS_LENGTH
         ):
             print("Silent Detected")
-            print(len(self.sound_buffer))
-            self.loop.call_soon_threadsafe(Queues.audio_queue.put_nowait, np.concatenate(self.sound_buffer))
+            asyncio.run_coroutine_threadsafe(
+                Events.on_audio_complete.emit(np.concatenate(self.sound_buffer)),
+                self.loop,
+            )
+            self.sound_buffer.clear()
+        elif not is_speaking(audio) and len(self.sound_buffer) < MIN_SPEECH_CHUNKS_LENGTH:
             self.sound_buffer.clear()
 
 

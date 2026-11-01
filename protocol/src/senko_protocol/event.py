@@ -15,6 +15,8 @@ class AsyncEvent[**P]:
         self._handles.remove(func)
 
     async def emit(self, *args: P.args, **kwargs: P.kwargs):
+        print(self._handles)
+
         coroutines: list[Awaitable[None]] = [
             handles(*args, **kwargs)
             for handles in self._handles

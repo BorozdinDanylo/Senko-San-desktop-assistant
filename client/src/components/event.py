@@ -1,6 +1,7 @@
 from senko_protocol.event import AsyncEvent
-import numpy as np
+from senko_protocol.typing import AudioArray
 
 
 class Events:
-    on_audio_complete: AsyncEvent[[np.ndarray]] = AsyncEvent()
+    on_audio_complete: AsyncEvent[[AudioArray]] = AsyncEvent()
+    on_get_audio: AsyncEvent[[AudioArray]] = AsyncEvent()

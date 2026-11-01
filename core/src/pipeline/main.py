@@ -1,9 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from .components import Runtime, Queues
+from pipeline.components import Runtime, Queues
 from server import Server
-from listener.whisper.microphone_recording import microphone
 import asyncio
 
 
@@ -14,7 +13,6 @@ async def worker():
     server.start()
 
     await asyncio.gather(
-        microphone(Queues.audio_queue),
         runtime.stt.worker(),
         runtime.text_input.hear(),
         runtime.senko.live(),

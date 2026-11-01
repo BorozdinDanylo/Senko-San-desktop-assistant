@@ -1,9 +1,8 @@
+from senko_protocol.path import BASE_DIR
 from typing import Literal
-from pathlib import Path
 from openai.types.shared_params import Reasoning, ChatModel
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SENKO_PROMPT_FILE = BASE_DIR / "senko_prompt.md"
 
 with open(SENKO_PROMPT_FILE, "r", encoding="utf-8") as f:

@@ -1,13 +1,15 @@
 from senko_client.client import Client
-from conection.unix_socket import test_listener
 import asyncio
 
 
 async def main():
     client = Client()
     await client.start()
-    await test_listener()
-    await client.stop()
+
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await client.stop()
 
 
 def run():

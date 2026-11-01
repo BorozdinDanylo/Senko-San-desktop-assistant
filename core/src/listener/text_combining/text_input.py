@@ -14,6 +14,8 @@ class TextInput:
 
         self.client: AsyncClient = AsyncClient()
 
+        Events.on_senko_answer.subscribe(self.add_senko_answer)
+
     def update_content(self, text: str):
         self.content.append(
             Message(
@@ -24,7 +26,6 @@ class TextInput:
         if len(self.content) > MAX_CONTEXT_SIZE:
             self.content = self.content[len(self.content) - MAX_CONTEXT_SIZE:]
 
-    @Events.on_senko_answer
     async def add_senko_answer(self, text: str):
         self.content.append(
             Message(

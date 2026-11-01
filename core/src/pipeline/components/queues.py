@@ -1,4 +1,4 @@
-from senko_protocol.typeing import AudioArray
+from senko_protocol.typing import AudioArray
 import asyncio
 
 

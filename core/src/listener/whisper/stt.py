@@ -37,4 +37,4 @@ class SpeechToText:
 
             if text:
                 print(text)
-                await Queues.transcription_queue.put(text)
+                await Queues.text_analiz.put(text)
