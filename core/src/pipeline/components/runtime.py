@@ -1,4 +1,8 @@
-from typing import TYPE_CHECKING, Self, Literal
+from .events import Events
+from .queues import Queues
+from senko_protocol.meta import SingletonMeta
+from senko_protocol.typeing import AudioArray
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from listener.text_combining.text_input import TextInput
@@ -7,21 +11,8 @@ if TYPE_CHECKING:
     from voice.model.senko import SenkoVoice
 
 
-class Runtime:
-    _singleton: Self | None = None
-
-    def __new__(cls) -> Self:
-        if cls._singleton is None:
-            obj: Self = super().__new__(cls)
-            cls._singleton = obj
-            return obj
-
-        return cls._singleton
-
+class Runtime(metaclass=SingletonMeta):
     def __init__(self):
-        if getattr(self, "initialized", False):
-            return
-
         from listener.whisper.stt import SpeechToText
         from listener.text_combining.text_input import TextInput
         from senko.models.speaker import Speaker
@@ -32,7 +23,11 @@ class Runtime:
         self.senko = Speaker()
         self.voice = SenkoVoice()
 
-        self.initialized: Literal[True] = True
+
+    @staticmethod
+    @Events.on_audio_receiving
+    async def audio_receiving(audio: AudioArray):
+        await Queues.audio_queue.put(audio)
 
 
 

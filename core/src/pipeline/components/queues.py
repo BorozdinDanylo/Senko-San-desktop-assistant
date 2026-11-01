@@ -1,12 +1,12 @@
-import numpy as np
+from senko_protocol.typeing import AudioArray
 import asyncio
 
 
 class Queues:
-    audio_queue = asyncio.Queue[np.ndarray]()
-    transcription_queue = asyncio.Queue[str]()
-    text_queue = asyncio.Queue[str]()
-    text_analiz = asyncio.Queue[str]()
-    tts_queue = asyncio.Queue[str]()
+    audio_queue: asyncio.Queue[AudioArray] = asyncio.Queue[AudioArray]()
+    transcription_queue: asyncio.Queue[str] = asyncio.Queue[str]()
+    text_queue: asyncio.Queue[str] = asyncio.Queue[str]()
+    text_analiz: asyncio.Queue[str] = asyncio.Queue[str]()
+    tts_queue: asyncio.Queue[str] = asyncio.Queue[str]()
 
 

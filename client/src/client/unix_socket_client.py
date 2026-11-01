@@ -20,7 +20,7 @@ class SenkoClient:
             body_length=len(audio_bytes),
         )
 
-        response: Response = await self.unix_socket.send_message(
+        response: Response = await self.unix_socket.request(
             Request(
                 header=header,
                 body=audio_bytes,

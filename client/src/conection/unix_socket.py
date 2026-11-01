@@ -1,14 +1,14 @@
 from senko_protocol.model import Response, Request, Header, ResponseBody
 from senko_protocol.enum import Version, DataType
+from senko_protocol.path import SOCKET_PATH
+from senko_protocol.meta import SingletonMeta
 from collections.abc import Callable, Coroutine
-from pathlib import Path
 from functools import wraps
 from typing import Any, Concatenate, Self, Literal
 import struct
 import asyncio
 
 
-SOCKET_PATH = Path("/run/senko/senko.sock")
 MAX_BODY_SIZE = 16 * 1024 * 1024
 
 
@@ -43,41 +43,28 @@ def catch_errors[**P, R](
     return wrapper
 
 
-class UnixSocket:
-    singleton: Self | None = None
-
-    def __new__(cls):
-        if cls.singleton is None:
-            obj = super().__new__(cls)
-            cls.singleton = obj
-            return obj
-
-        return cls.singleton
-
+class UnixSocket(metaclass=SingletonMeta):
     def __init__(self):
-        if not SOCKET_PATH.exists():
-            raise FileNotFoundError("Socket does not exist")
-
-        if getattr(self, "initialized", False):
-            return
-
         self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
 
-        self.initialized: Literal[True] = True
-
     async def connect(self):
-        self.reader, self.writer = await asyncio.open_unix_connection(
-            str(SOCKET_PATH),
-        )
+        if self.reader is None or self.writer is None:
+            self.reader, self.writer = await asyncio.open_unix_connection(
+                str(SOCKET_PATH),
+            )
 
     async def disconnect(self):
-        if self.writer:
-            self.writer.close()
-            await self.writer.wait_closed()
+        try:
+            if self.writer is not None:
+                self.writer.close()
+                await self.writer.wait_closed()
+        finally:
+            self.reader = None
+            self.writer = None
 
     @catch_errors
-    async def send_message(self, message: Request) -> Response:
+    async def request(self, message: Request) -> Response:
         if self.writer is None or self.reader is None:
             raise RuntimeError("Socket is not connected")
 

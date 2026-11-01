@@ -2,6 +2,10 @@ from .enum import Version, DataType
 from pydantic import BaseModel, PositiveInt
 
 
+def model_to_bytes(model: BaseModel) -> bytes:
+    return model.model_dump_json().encode()
+
+
 class Header(BaseModel):
     version: Version
     type: DataType
