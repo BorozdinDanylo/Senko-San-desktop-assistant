@@ -4,7 +4,6 @@ from pipeline.components import Queues, Events
 from ..model import AudioDict
 from senko import NewMessage
 from fishaudio.client import AsyncFishAudio
-from fishaudio.utils import play
 import asyncio
 
 
@@ -24,7 +23,7 @@ class SenkoVoice:
                 text=text,
                 reference_id=SENKO_SAN_VOICE_ID,
                 model="s2.1-pro-free",  # type: ignore[arg-type]
-                format="mp3",
+                format="wav",
             )
 
             if generation != NewMessage.generation:
@@ -40,7 +39,7 @@ class SenkoVoice:
         while True:
             audio: AudioDict = await self.audio_queue.get()
 
-            await asyncio.to_thread(play, audio["audio"])
+            await Events.on_give_audio.emit(audio["audio"])
 
             if audio["generation"] == NewMessage.generation:
                 NewMessage.spoken(audio["text"])

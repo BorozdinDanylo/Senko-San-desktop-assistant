@@ -1,6 +1,7 @@
 from .transport import Connector
 from .connection import create_connector
-from senko_protocol.typing import AudioArray
+from pipeline.components import Events
+from senko_protocol.enum import DataType
 
 
 class Server:
@@ -10,8 +11,12 @@ class Server:
     def start(self):
         self.connection.start()
 
+        Events.on_give_audio.subscribe(self.send_audio_answer)
+
     async def close(self):
         await self.connection.close()
 
-    async def send_audio_answer(self, answer: AudioArray):
-        await self.connection.send(answer.tobytes())
+        Events.on_give_audio.unsubscribe(self.send_audio_answer)
+
+    async def send_audio_answer(self, answer: bytes):
+        await self.connection.send(answer, DataType.AUDIO)

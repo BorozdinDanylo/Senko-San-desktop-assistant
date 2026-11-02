@@ -1,9 +1,9 @@
-from senko_protocol.model import Response, Header, ResponseBody, model_to_bytes
+from senko_protocol.model import Response, Header, ResponseBody
 from senko_protocol.enum import Version, DataType
 from senko_protocol.path import SOCKET_PATH
 from senko_protocol.meta import SingletonMeta
 from senko_protocol.typing import AudioArray
-from components import Events
+from components import Queues
 from collections.abc import Callable, Coroutine
 from functools import wraps
 from uuid import uuid4
@@ -54,6 +54,7 @@ class UnixSocket(metaclass=SingletonMeta):
 
         self._pending: dict[str, asyncio.Future[ResponseBody]] = {}
         self._listener: asyncio.Task | None = None
+        self._lock = asyncio.Lock()
 
     @property
     def reader(self) -> asyncio.StreamReader:
@@ -91,6 +92,7 @@ class UnixSocket(metaclass=SingletonMeta):
             while True:
                 version_code, = await self.reader.readexactly(1)
                 try:
+                    print(version_code)
                     version = Version(version_code)
                 except ValueError:
                     raise RuntimeError("Version is unknown")
@@ -117,8 +119,8 @@ class UnixSocket(metaclass=SingletonMeta):
                             future.set_result(response)
 
                     case DataType.AUDIO:
-                        audio: AudioArray = np.frombuffer(data, dtype=np.float32)
-                        await Events.on_get_audio.emit(audio)
+                        print("Got audio data")
+                        await Queues.audio_queue.put(data)
 
         except asyncio.CancelledError:
             pass
@@ -130,9 +132,16 @@ class UnixSocket(metaclass=SingletonMeta):
             body_length=len(data),
             request_id=request_id,
         )
-        header_bytes = model_to_bytes(header)
 
-        async with asyncio.Lock():
+        header_bytes = struct.pack(
+            "!BBI16s",
+            header.version,
+            header.type,
+            header.body_length,
+            header.request_id.encode(),
+        )
+
+        async with self._lock:
             self.writer.write(header_bytes + data)
             await self.writer.drain()
 

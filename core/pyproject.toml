@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "senko-protocol",
+    "soundfile>=0.14.0",
 ]
 
 [build-system]

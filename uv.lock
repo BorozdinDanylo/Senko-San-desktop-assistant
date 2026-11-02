@@ -402,10 +402,14 @@ version = "0.1.0"
 source = { editable = "core" }
 dependencies = [
     { name = "senko-protocol" },
+    { name = "soundfile" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "senko-protocol", editable = "protocol" }]
+requires-dist = [
+    { name = "senko-protocol", editable = "protocol" },
+    { name = "soundfile", specifier = ">=0.14.0" },
+]
 
 [[package]]
 name = "ctranslate2"

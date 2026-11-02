@@ -1,20 +1,15 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from pipeline.components import Runtime, Queues
-from server import Server
+from pipeline.components import Runtime
 import asyncio
 
 
 async def worker():
     runtime: Runtime = Runtime()
 
-    server: Server = Server()
-    server.start()
-
     await asyncio.gather(
         runtime.stt.worker(),
-        runtime.text_input.hear(),
         runtime.senko.live(),
         runtime.voice.tts_worker(),
         runtime.voice.speak(),

@@ -21,6 +21,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
         self._writer = None
 
         self._worker: asyncio.Task | None = None
+        self._lock = asyncio.Lock()
 
     @property
     def reader(self) -> asyncio.StreamReader:
@@ -46,11 +47,14 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                 self._reader = reader
                 self._writer = writer
 
+                print("Server is started!")
                 version_code, = await reader.readexactly(1)
+                print("Received Version")
                 try:
+                    print(version_code)
                     version = Version(version_code)
                 except ValueError:
-                    return
+                    continue
 
                 data_type: DataType
                 message_length: int
@@ -74,6 +78,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                         audio: AudioArray = np.frombuffer(audio_bytes, dtype=np.float32)
                         try:
                             await Events.on_audio_receiving.emit(audio)
+                            print("Received Audio")
                         except Exception as e:
                             await self.response(f"Error receiving audio {e}", request_id)
                             return
@@ -86,7 +91,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             writer.close()
             await writer.wait_closed()
 
-    async def response(self, response_message: str, request_id: str, version: Version = Version.V1, status_code: int = 200):
+    async def response(self, response_message: str, request_id: str, version: Version = Version.V2, status_code: int = 200):
         body = ResponseBody(
             status_code=status_code,
             message=response_message,
@@ -97,12 +102,14 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             version=version,
             type=DataType.RESPONSE,
             body_length=len(body_bytes),
+            request_id=request_id,
         )
         header_bytes = struct.pack(
-            "!BBI",
+            "!BBI16s",
             header.version,
             header.type,
             header.body_length,
+            header.request_id.encode()
         )
 
         self.writer.write(header_bytes + body_bytes)
@@ -135,8 +142,12 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             header.body_length,
         )
 
-        self.writer.write(header_bytes + body_message)
-        await self.writer.drain()
+        print(f"{header_bytes[:10]=}")
+        print(f"{body_message[:10]=}")
+
+        async with self._lock:
+            self.writer.write(header_bytes + body_message)
+            await self.writer.drain()
 
     def start(self):
         if self._worker is not None:

@@ -7,6 +7,7 @@ class Events:
     on_senko_answer: AsyncEvent[[str]] = AsyncEvent[[str]]()
     on_interrupt: AsyncEvent[[]] = AsyncEvent[[]]()
     on_audio_receiving: AsyncEvent[[AudioArray]] = AsyncEvent[[np.ndarray]]()
+    on_give_audio: AsyncEvent[[bytes]] = AsyncEvent[[bytes]]()
 
 
 
