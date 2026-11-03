@@ -1865,6 +1865,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "sounddevice" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
@@ -1887,6 +1888,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sounddevice", specifier = ">=0.5.5" },
+    { name = "tiktoken", specifier = ">=0.14.0" },
 ]
 
 [[package]]
