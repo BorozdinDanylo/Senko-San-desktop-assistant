@@ -1,4 +1,4 @@
-from pipeline.components.queues import Queues
+from components import Queues
 from faster_whisper import WhisperModel
 import numpy as np
 import asyncio

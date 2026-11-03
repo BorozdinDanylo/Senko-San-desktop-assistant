@@ -1,6 +1,6 @@
 from typing import List, Optional
 from listener.config.llm import MODEL, THINK_MODE, RouterResult, TEMPERATURE, MAX_CONTEXT_SIZE, SYSTEM_PROMPT, PERHAPS_ACTION
-from pipeline.components import Events, Queues
+from components import Events, Queues
 from ollama import AsyncClient, Message
 from json_repair import repair_json
 from pydantic import ValidationError

@@ -1,6 +1,6 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_REASONING_MODE, NewMessage
-from pipeline.components.queues import Queues
-from pipeline.components.events import Events
+from components import Queues
+from components import Events
 from tools import Tool
 from typing import Literal, cast
 from openai import AsyncOpenAI, AsyncStream

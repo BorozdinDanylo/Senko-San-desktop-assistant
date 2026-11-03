@@ -22,6 +22,8 @@ class History:
         self._history: list[ResponseInputParam] = []
         self._encoding = tiktoken.encoding_for_model("gpt-5.6-luna")
 
+    def create_first_chunk(self): ...
+
     def add(self, message: ResponseInputItemParam):
         self._history[-1].append(message)
 

@@ -1,4 +1,4 @@
-from pipeline.components import Events
+from components import Events
 from senko_protocol.model import Header, ResponseBody, model_to_bytes
 from senko_protocol.enum import Version, DataType
 from senko_protocol.path import SOCKET_PATH

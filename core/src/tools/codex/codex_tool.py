@@ -163,7 +163,7 @@ class CodexTool(Tool):
 
     @classmethod
     async def checking_task(cls, task: Task, turn_id: str):
-        from pipeline.components import Runtime
+        from components import Runtime
         runtime: Runtime = Runtime()
 
         print("Start Chacking Task")

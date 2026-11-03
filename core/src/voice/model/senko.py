@@ -1,6 +1,6 @@
 from voice.model import SENKO_SAN_VOICE_ID, SENKO_SAN_API_KEY
 from voice import clear_queue
-from pipeline.components import Queues, Events
+from components import Queues, Events
 from ..model import AudioDict
 from senko import NewMessage
 from fishaudio.client import AsyncFishAudio

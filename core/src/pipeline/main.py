@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from pipeline.components import Runtime
+from components import Runtime
 import asyncio
 
 
