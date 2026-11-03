@@ -1,6 +1,5 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_REASONING_MODE, NewMessage
-from components import Queues
-from components import Events
+from components import Queues, Events, History
 from tools import Tool
 from typing import Literal, cast
 from openai import AsyncOpenAI, AsyncStream
@@ -15,6 +14,7 @@ from openai.types.responses import (
     ResponseFunctionToolCall,
     ResponseReasoningItemParam,
     ResponseReasoningItem,
+    ResponseFunctionToolCallParam
 )
 import asyncio
 import emoji
@@ -22,7 +22,7 @@ import emoji
 
 class Speaker:
     def __init__(self):
-        self.history: ResponseInputParam = []
+        self.history: History = History()
         self.context: str = ""
 
         self.client: AsyncOpenAI = AsyncOpenAI()
@@ -41,7 +41,7 @@ class Speaker:
             "content": content,
         }
 
-        self.history.append(new_content)
+        self.history.add(new_content)
 
     @property
     def prompt(self) -> ResponseInputItemParam:
@@ -52,12 +52,6 @@ class Speaker:
 
         return prompt
 
-    def get_message(self) -> ResponseInputParam:
-        return [
-            self.prompt,
-            *self.history,
-        ]
-
     async def live(self):
         print("Senko-San is ready")
         while True:
@@ -67,7 +61,7 @@ class Speaker:
             previous_answer = NewMessage.get_message()
             self.update_content("assistant", previous_answer)
             self.update_content("user", text)
-            messages = self.get_message()
+            messages = self.history.get()
 
             stream: AsyncStream[ResponseStreamEvent] = await self.client.responses.create(
                 model=SENKO_MODEL_NAME,
@@ -100,12 +94,12 @@ class Speaker:
                         if done_event.item.type == "function_call":
                             tool_call: ResponseFunctionToolCall = cast(ResponseFunctionToolCall, done_event.item)
                             tool_calls.append(tool_call)
-                            self.history.append({
-                                "type": "function_call",
-                                "call_id": tool_call.call_id,
-                                "name": tool_call.name,
-                                "arguments": tool_call.arguments,
-                            })
+                            self.history.add(ResponseFunctionToolCallParam(
+                                type="function_call",
+                                call_id=tool_call.call_id,
+                                name=tool_call.name,
+                                arguments=tool_call.arguments,
+                            ))
 
                         elif done_event.item.type == "reasoning":
                             reasoning: ResponseReasoningItem = cast(ResponseReasoningItem, done_event.item)
@@ -115,7 +109,7 @@ class Speaker:
                                 reasoning.model_dump(exclude_none=True),
                             )
 
-                            self.history.append(reasoning_param)
+                            self.history.add(reasoning_param)
 
                     case "response.completed":
                         print()
@@ -134,15 +128,18 @@ class Speaker:
                         f"Tool answers: {len(tool_answers)}"
                     )
 
-                self.history.extend(tool_answers)
+                for tool_answer in tool_answers:
+                    self.history.add(tool_answer)
 
                 print("Recalling Senko...")
                 await Queues.text_analiz.put("")
 
+            self.history.open_new_chunk()
+
             # Give the transcription router current context without resetting playback tracking.
-            answer = NewMessage.get_message(clear=False)
-            if answer:
-                await Events.on_senko_answer.emit(answer)
+            # answer = NewMessage.get_message(clear=False)
+            # await Events.on_senko_answer.emit(answer)
+
 
     @staticmethod
     async def start_tools(tool_calls: list[ResponseFunctionToolCall]) -> list[FunctionCallOutput]:
