@@ -1,3 +1,4 @@
+from core.components import Queues
 from tools.types.tool import Tool
 from pydantic import Field
 from dataclasses import dataclass
@@ -163,7 +164,7 @@ class CodexTool(Tool):
 
     @classmethod
     async def checking_task(cls, task: Task, turn_id: str):
-        from components import Runtime
+        from core.components import Runtime
         runtime: Runtime = Runtime()
 
         print("Start Chacking Task")
@@ -195,7 +196,7 @@ class CodexTool(Tool):
 
                         print("For Loop Is Finishing")
 
-                        await runtime.senko.text_analiz.put(
+                        await Queues.text_analiz.put(
                             "[Background Codex Task Result]\n"
                             "Source: Codex\n"
                             f"Turn ID: {turn_id}\n"
@@ -210,7 +211,7 @@ class CodexTool(Tool):
         except Exception as exc:
             print(f"Error in checking task status: {exc}")
 
-            await runtime.senko.text_analiz.put(
+            await Queues.text_analiz.put(
                 "[Background Codex Task Error]\n"
                 f"Turn ID: {turn_id}\n"
                 f"Working directory: {task.working_directory}\n"

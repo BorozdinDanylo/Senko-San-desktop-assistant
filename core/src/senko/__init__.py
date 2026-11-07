@@ -50,14 +50,9 @@ class NewMessage:
         if cls.full_text == "":
             return ""
 
-        unspoken_text = cls.full_text[len(cls.spoken_text):] if cls.full_text.startswith(cls.spoken_text) else cls.full_text
+        # unspoken_text = cls.full_text[len(cls.spoken_text):] if cls.full_text.startswith(cls.spoken_text) else cls.full_text
 
-        message: str = f"""
-            Spoken text:
-            {cls.spoken_text.strip() or "<empty>"}
-            Unspoken text:
-            {unspoken_text.strip() or "<empty>"}
-        """
+        message: str = cls.spoken_text.strip()
 
         if clear:
             cls.clear()

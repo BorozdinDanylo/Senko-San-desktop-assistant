@@ -1,4 +1,4 @@
-from components import Events
+from senko_client.components import Events
 from time import monotonic
 from typing import Self, Literal
 import sounddevice as sd

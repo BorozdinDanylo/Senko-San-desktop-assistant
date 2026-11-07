@@ -1,6 +1,6 @@
 from voice.model import SENKO_SAN_VOICE_ID, SENKO_SAN_API_KEY
 from voice import clear_queue
-from components import Queues, Events
+from core.components import Queues, Events
 from ..model import AudioDict
 from senko import NewMessage
 from fishaudio.client import AsyncFishAudio
@@ -17,6 +17,7 @@ class SenkoVoice:
     async def tts_worker(self):
         while True:
             text = await Queues.tts_queue.get()
+            print(f"text on stt {text}")
 
             generation = NewMessage.generation
             audio = await self.client.tts.convert(
@@ -26,8 +27,8 @@ class SenkoVoice:
                 format="wav",
             )
 
-            if generation != NewMessage.generation:
-                continue
+            # if generation != NewMessage.generation:
+            #     continue
 
             await self.audio_queue.put(AudioDict(
                 text=text,

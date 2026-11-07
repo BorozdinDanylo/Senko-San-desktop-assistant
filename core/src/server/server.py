@@ -1,6 +1,6 @@
 from .transport import Connector
 from .connection import create_connector
-from components import Events
+from core.components import Events
 from senko_protocol.enum import DataType
 
 

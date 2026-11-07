@@ -1,5 +1,5 @@
 from senko_protocol.meta import SingletonMeta
-from components.queue import Queues
+from senko_client.components import Queues
 import soundfile as sf
 import sounddevice as sd
 import asyncio

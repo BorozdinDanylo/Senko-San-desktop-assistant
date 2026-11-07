@@ -1,5 +1,6 @@
 from senko_protocol.enum import Version, DataType
 from abc import ABC, abstractmethod, abstractproperty
+import uuid
 import asyncio
 
 
@@ -24,7 +25,7 @@ class Connector(ABC):
         pass
 
     @abstractmethod
-    async def response(self, response_message: str, request_id: str, version: Version = Version.V1):
+    async def response(self, response_message: str, request_id: uuid.UUID, version: Version = Version.V1):
         pass
 
     @abstractmethod

@@ -1,10 +1,12 @@
-from components.path import SYSTEM_SENKO_PROMPT
+from senko_protocol.path import BASE_DIR
+from core.components.path import SYSTEM_SENKO_PROMPT
 from openai.types.responses import ResponseInputParam, EasyInputMessageParam, ResponseInputItemParam
 from openai import AsyncOpenAI
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.responses import Response
-from typing import overload
+from typing import overload, Self
 from pathlib import Path
+import aiosqlite
 import tiktoken
 import json
 
@@ -14,6 +16,7 @@ COMPRESS_TO_SIZE = 130_000
 
 MAIN_MEMORIES_PATH = Path("/home/Senka/main_memories.md")
 NOTES_TO_NEXT_START_PATH = Path("/home/Senka/notes_to_next_start.md")
+HISTORY_DB_PATH = Path("/home/Senka/memory/history.db")
 
 SUMMARY_MODEL: ResponsesModel = "gpt-5.6-luna"
 SUMMARY_REASONING: Reasoning = Reasoning(
@@ -27,10 +30,61 @@ def get_text_from_history_part(history_part: list[ResponseInputParam]) -> str:
 
 class History:
     def __init__(self):
-        self._history: list[ResponseInputParam] = []
+        self._history: list[ResponseInputParam] = [self.create_first_chunk(is_program_starting=True)]
         self._encoding = tiktoken.encoding_for_model("gpt-5.6-luna")
 
         self.summary_client: AsyncOpenAI = AsyncOpenAI()
+
+        self._db: aiosqlite.Connection | None = None
+        self._chunk_id: int = 0
+        self._position: int = 0
+
+    async def load(self) -> Self:
+        self._db = await aiosqlite.connect(HISTORY_DB_PATH)
+
+        assert self._db is not None
+
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY,
+                chunk_id INTEGER NOT NULL,
+                position INTEGER NOT NULL UNIQUE,
+                data TEXT NOT NULL
+            )
+        """)
+
+        await self._db.commit()
+
+        async with self._db.execute(
+                "SELECT chunk_id, position, data FROM messages ORDER BY position"
+        ) as cursor:
+            rows = list(await cursor.fetchall())
+
+        self._history = [self.create_first_chunk()]
+
+        previous_chunk_id: int | None = None
+
+        chunk_id: int
+        position: int
+        data: str
+        for chunk_id, position, data in rows:
+            if chunk_id != previous_chunk_id:
+                self._history.append([])
+                previous_chunk_id = chunk_id
+
+            self._history[-1].append(json.loads(data))
+
+        if rows:
+            self._chunk_id = rows[-1][0]
+            self._position = rows[-1][1] + 1
+        else:
+            self._chunk_id = 0
+            self._position = 0
+
+        self._history.append([])
+        self._chunk_id += 1
+
+        return self
 
     @staticmethod
     def create_first_chunk(is_program_starting: bool = False) -> ResponseInputParam:
@@ -56,12 +110,29 @@ class History:
 
         return first_chunk
 
-    def add(self, message: ResponseInputItemParam):
+    async def add(self, message: ResponseInputItemParam):
         self._history[-1].append(message)
 
-    def open_new_chunk(self):
+        assert self._db is not None
+
+        await self._db.execute(
+            """
+            INSERT INTO messages (chunk_id, position, data)
+            VALUES (?, ?, ?)
+            """,
+            (
+                self._chunk_id,
+                self._position,
+                json.dumps(message, ensure_ascii=False),
+            ),
+        )
+
+        await self._db.commit()
+        self._position += 1
+
+    async def open_new_chunk(self):
         if self.size() > MAX_TOKEN_SIZE:
-            self.compressing()
+            await self.compressing()
 
         self._history.append([])
 
@@ -129,3 +200,44 @@ class History:
             new_summary_chunk,
             *self._history
         ]
+
+        await self._save_history()
+
+    async def _save_history(self):
+        rows: list[tuple[int, int, str]] = []
+        position: int = 0
+
+        assert self._db is not None
+
+        for chunk_id, chunk in enumerate(self._history[1:]):
+            for message in chunk:
+                rows.append((
+                    chunk_id,
+                    position,
+                    json.dumps(message, ensure_ascii=False),
+                ))
+                position += 1
+
+        await self._db.execute("BEGIN IMMEDIATE")
+
+        try:
+            await self._db.execute("DELETE FROM messages")
+
+            await self._db.executemany(
+                """
+                INSERT INTO messages (chunk_id, position, data)
+                VALUES (?, ?, ?)
+                """,
+                rows,
+            )
+
+            await self._db.commit()
+
+        except Exception:
+            await self._db.rollback()
+            raise
+
+        self._position = position
+        self._chunk_id = len(self._history) - 2
+
+        await self._db.commit()

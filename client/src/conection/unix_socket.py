@@ -2,13 +2,11 @@ from senko_protocol.model import Response, Header, ResponseBody
 from senko_protocol.enum import Version, DataType
 from senko_protocol.path import SOCKET_PATH
 from senko_protocol.meta import SingletonMeta
-from senko_protocol.typing import AudioArray
-from components import Queues
+from senko_client.components import Queues
 from collections.abc import Callable, Coroutine
 from functools import wraps
-from uuid import uuid4
 from typing import Any, Concatenate
-import numpy as np
+import uuid
 import struct
 import asyncio
 
@@ -52,7 +50,7 @@ class UnixSocket(metaclass=SingletonMeta):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
 
-        self._pending: dict[str, asyncio.Future[ResponseBody]] = {}
+        self._pending: dict[uuid.UUID, asyncio.Future[ResponseBody]] = {}
         self._listener: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
@@ -92,14 +90,14 @@ class UnixSocket(metaclass=SingletonMeta):
             while True:
                 version_code, = await self.reader.readexactly(1)
                 try:
-                    print(version_code)
+                    print(f"{version_code=}")
                     version = Version(version_code)
                 except ValueError:
                     raise RuntimeError("Version is unknown")
 
                 message_type: DataType
                 body_length: int
-                request_id: str = ""
+                request_id: uuid.UUID | None = None
 
                 match version:
                     case Version.V1:
@@ -107,12 +105,15 @@ class UnixSocket(metaclass=SingletonMeta):
                         message_type, body_length = struct.unpack("!BI", header_data)
                     case Version.V2:
                         header_data = await self.reader.readexactly(21)
-                        message_type, body_length, request_id = struct.unpack("!BI16s", header_data)
+                        message_type, body_length, request_bytes = struct.unpack("!BI16s", header_data)
+                        request_id = uuid.UUID(bytes=request_bytes)
+                        print(f"Got {request_id=}")
 
                 data: bytes = await self.reader.readexactly(body_length)
 
                 match message_type:
                     case DataType.RESPONSE:
+                        assert request_id is not None
                         future = self._pending.get(request_id)
                         if future is not None:
                             response: ResponseBody = ResponseBody.model_validate_json(data)
@@ -125,28 +126,30 @@ class UnixSocket(metaclass=SingletonMeta):
         except asyncio.CancelledError:
             pass
 
-    async def send(self, data: bytes, dtype: DataType, request_id: str = ""):
+    @catch_errors
+    async def send(self, data: bytes, dtype: DataType, request_id: uuid.UUID):
         header = Header(
             version=Version.V2,
             type=dtype,
             body_length=len(data),
             request_id=request_id,
         )
-
+        assert header.request_id is not None
         header_bytes = struct.pack(
             "!BBI16s",
             header.version,
             header.type,
             header.body_length,
-            header.request_id.encode(),
+            header.request_id.bytes,
         )
 
         async with self._lock:
             self.writer.write(header_bytes + data)
             await self.writer.drain()
 
-    async def fetch(self, data: bytes, dtype: DataType):
-        request_id = str(uuid4())
+    async def fetch(self, data: bytes, dtype: DataType) -> Response:
+        request_id = uuid.uuid4()
+        print(f"Sending {request_id=}...")
 
         future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
@@ -158,6 +161,15 @@ class UnixSocket(metaclass=SingletonMeta):
             self._pending.pop(request_id, None)
 
         print(f"Response staus is {response.status_code} and message is {response.message}")
+        return Response(
+            header=Header(
+                version=Version.V2,
+                type=dtype,
+                body_length=len(data),
+                request_id=request_id,
+            ),
+            body=response,
+        )
 
 
 

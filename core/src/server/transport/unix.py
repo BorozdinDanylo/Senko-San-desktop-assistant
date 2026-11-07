@@ -1,4 +1,4 @@
-from components import Events
+from core.components import Events
 from senko_protocol.model import Header, ResponseBody, model_to_bytes
 from senko_protocol.enum import Version, DataType
 from senko_protocol.path import SOCKET_PATH
@@ -9,6 +9,7 @@ from .connctor import Connector
 from pathlib import Path
 import numpy as np
 import struct
+import uuid
 import asyncio
 import os
 
@@ -47,9 +48,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                 self._reader = reader
                 self._writer = writer
 
-                print("Server is started!")
                 version_code, = await reader.readexactly(1)
-                print("Received Version")
                 try:
                     print(version_code)
                     version = Version(version_code)
@@ -58,7 +57,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
 
                 data_type: DataType
                 message_length: int
-                request_id: str = ""
+                request_id: uuid.UUID | None = None
 
                 match version:
                     case Version.V1:
@@ -66,7 +65,9 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                         data_type, message_length = struct.unpack("!BI", header)
                     case Version.V2:
                         header = await reader.readexactly(21)
-                        data_type, message_length, request_id = struct.unpack("!BI16s", header)
+                        data_type, message_length, request_bytes = struct.unpack("!BI16s", header)
+                        request_id = uuid.UUID(bytes=request_bytes)
+                        print(f"Got {request_id=}")
 
                 match data_type:
                     case DataType.AUDIO:
@@ -91,7 +92,10 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             writer.close()
             await writer.wait_closed()
 
-    async def response(self, response_message: str, request_id: str, version: Version = Version.V2, status_code: int = 200):
+    async def response(self, response_message: str, request_id: uuid.UUID | None, version: Version = Version.V2, status_code: int = 200):
+        if version == Version.V1 or request_id is None:
+            return
+
         body = ResponseBody(
             status_code=status_code,
             message=response_message,
@@ -104,15 +108,18 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             body_length=len(body_bytes),
             request_id=request_id,
         )
+        assert header.request_id is not None
         header_bytes = struct.pack(
             "!BBI16s",
             header.version,
             header.type,
             header.body_length,
-            header.request_id.encode()
+            header.request_id.bytes
         )
 
-        self.writer.write(header_bytes + body_bytes)
+        async with self._lock:
+            self.writer.write(header_bytes + body_bytes)
+            await self.writer.drain()
 
         print("Send Response")
 
@@ -141,9 +148,6 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             header.type,
             header.body_length,
         )
-
-        print(f"{header_bytes[:10]=}")
-        print(f"{body_message[:10]=}")
 
         async with self._lock:
             self.writer.write(header_bytes + body_message)

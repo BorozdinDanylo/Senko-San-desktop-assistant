@@ -1,12 +1,11 @@
 from senko import SENKO_PROMPT, SENKO_MODEL_NAME, SENKO_REASONING_MODE, NewMessage
-from components import Queues, Events, History
+from core.components import Queues, Events, History
 from tools import Tool
 from typing import Literal, cast
 from openai import AsyncOpenAI, AsyncStream
 from openai.types.responses.response_input_param import FunctionCallOutput
 from openai.types.responses import (
     ResponseInputItemParam,
-    ResponseInputParam,
     EasyInputMessageParam,
     ResponseStreamEvent,
     ResponseOutputItemDoneEvent,
@@ -27,7 +26,7 @@ class Speaker:
 
         self.client: AsyncOpenAI = AsyncOpenAI()
 
-    def update_content(
+    async def update_content(
             self,
             role: Literal["user", "assistant"],
             content: str,
@@ -41,7 +40,7 @@ class Speaker:
             "content": content,
         }
 
-        self.history.add(new_content)
+        await self.history.add(new_content)
 
     @property
     def prompt(self) -> ResponseInputItemParam:
@@ -53,14 +52,13 @@ class Speaker:
         return prompt
 
     async def live(self):
+        await self.history.load()
         print("Senko-San is ready")
         while True:
             text = await Queues.text_analiz.get()
-            await Events.on_interrupt.emit()
+            # await Events.on_interrupt.emit()
             await asyncio.sleep(0)  # Drain queued speech before the next response.
-            previous_answer = NewMessage.get_message()
-            self.update_content("assistant", previous_answer)
-            self.update_content("user", text)
+            await self.update_content("user", text)
             messages = self.history.get()
 
             stream: AsyncStream[ResponseStreamEvent] = await self.client.responses.create(
@@ -84,7 +82,7 @@ class Speaker:
                         buffer += text
 
                         if any(char in buffer for char in ".!?…"):
-                            print(buffer)
+                            print(f"{buffer=}")
                             NewMessage.add_text(buffer)
                             await Queues.tts_queue.put(buffer)
                             buffer = ""
@@ -94,7 +92,7 @@ class Speaker:
                         if done_event.item.type == "function_call":
                             tool_call: ResponseFunctionToolCall = cast(ResponseFunctionToolCall, done_event.item)
                             tool_calls.append(tool_call)
-                            self.history.add(ResponseFunctionToolCallParam(
+                            await self.history.add(ResponseFunctionToolCallParam(
                                 type="function_call",
                                 call_id=tool_call.call_id,
                                 name=tool_call.name,
@@ -109,7 +107,7 @@ class Speaker:
                                 reasoning.model_dump(exclude_none=True),
                             )
 
-                            self.history.add(reasoning_param)
+                            await self.history.add(reasoning_param)
 
                     case "response.completed":
                         print()
@@ -129,12 +127,13 @@ class Speaker:
                     )
 
                 for tool_answer in tool_answers:
-                    self.history.add(tool_answer)
+                    await self.history.add(tool_answer)
 
                 print("Recalling Senko...")
                 await Queues.text_analiz.put("")
 
-            self.history.open_new_chunk()
+            await self.update_content("assistant", NewMessage.get_message())
+            await self.history.open_new_chunk()
 
             # Give the transcription router current context without resetting playback tracking.
             # answer = NewMessage.get_message(clear=False)
