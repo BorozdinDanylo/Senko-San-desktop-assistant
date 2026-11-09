@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from core.components import Runtime
+from tools import CodexTool
 import asyncio
 
 
@@ -16,7 +17,10 @@ async def worker():
             runtime.voice.speak(),
         )
     finally:
-        await runtime.server.close()
+        try:
+            await CodexTool.shutdown()
+        finally:
+            await runtime.server.close()
 
 
 def main():
