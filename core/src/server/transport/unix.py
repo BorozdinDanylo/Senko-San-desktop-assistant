@@ -15,14 +15,18 @@ import os
 
 
 class UnixSocket(Connector, metaclass=SingletonMeta):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-        self._reader = None
-        self._writer = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
 
-        self._worker: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
+        self._worker: asyncio.Task[None] | None = None
+        self._lock: asyncio.Lock = asyncio.Lock()
+
+        self._clients: set[asyncio.Task[None]] = set()
+        self._writers: set[asyncio.StreamWriter] = set()
+        self._owns_socket: bool = False
 
     @property
     def reader(self) -> asyncio.StreamReader:
@@ -42,7 +46,14 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             self,
             reader: asyncio.StreamReader,
             writer: asyncio.StreamWriter,
-    ):
+    ) -> None:
+        task: asyncio.Task[None] | None = asyncio.current_task()
+
+        if task is not None:
+            self._clients.add(task)
+
+        self._writers.add(writer)
+
         try:
             while True:
                 self._reader = reader
@@ -86,13 +97,26 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
 
                         await self.response("Audio has been processed", request_id)
 
-        except asyncio.IncompleteReadError:
+        except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
-            writer.close()
-            await writer.wait_closed()
+            self._writers.discard(writer)
 
-    async def response(self, response_message: str, request_id: uuid.UUID | None, version: Version = Version.V2, status_code: int = 200):
+            if task is not None:
+                self._clients.discard(task)
+
+            if self._writer is writer:
+                self._reader = None
+                self._writer = None
+
+            writer.close()
+
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+
+    async def response(self, response_message: str, request_id: uuid.UUID | None, version: Version = Version.V2, status_code: int = 200) -> None:
         if version == Version.V1 or request_id is None:
             return
 
@@ -123,7 +147,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
 
         print("Send Response")
 
-    async def run(self):
+    async def run(self) -> None:
         Path(SOCKET_PATH).unlink(missing_ok=True)
 
         server = await asyncio.start_unix_server(
@@ -131,12 +155,14 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             path=SOCKET_PATH,
         )
 
+        self._owns_socket = True
+
         os.chmod(SOCKET_PATH, 0o660)
 
         async with server:
             await server.serve_forever()
 
-    async def send(self, body_message: bytes, dtype: DataType, version: Version = Version.V1):
+    async def send(self, body_message: bytes, dtype: DataType, version: Version = Version.V1) -> None:
         header = Header(
             version=version,
             type=dtype,
@@ -150,29 +176,44 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
         )
 
         async with self._lock:
-            self.writer.write(header_bytes + body_message)
-            await self.writer.drain()
+            writer: asyncio.StreamWriter | None = self._writer
 
-    def start(self):
+            if writer is None or writer.is_closing():
+                return
+
+            try:
+                writer.write(header_bytes + body_message)
+                await writer.drain()
+            except ConnectionError:
+                pass
+
+    def start(self) -> None:
         if self._worker is not None:
             return
 
         self._worker = asyncio.create_task(self.run())
 
-    async def close(self):
-        if self._worker is None:
-            return
+    async def close(self) -> None:
+        worker: asyncio.Task[None] | None = self._worker
+        self._worker = None
 
-        self._worker.cancel()
+        if worker is not None:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+        clients: list[asyncio.Task[None]] = list(self._clients)
+
+        for writer in self._writers:
+            writer.close()
+
+        for task in clients:
+            task.cancel()
+
+        await asyncio.gather(*clients, return_exceptions=True)
 
         self._reader = None
         self._writer = None
 
-        try:
-            await self._worker
-        except asyncio.CancelledError:
-            pass
-
-
-
-
+        if self._owns_socket:
+            Path(SOCKET_PATH).unlink(missing_ok=True)
+            self._owns_socket = False

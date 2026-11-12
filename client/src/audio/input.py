@@ -47,7 +47,7 @@ class Microphone:
         self.sound_buffer.append(audio_data)
 
 
-    async def create_stream(self):
+    async def create_stream(self) -> None:
         with sd.InputStream(
                 device="pipewire",
                 samplerate=SAMPLE_RATE,
@@ -78,12 +78,12 @@ class Microphone:
             self.sound_buffer.clear()
 
 
-    async def start_streaming(self):
+    async def start_streaming(self) -> None:
         print("Start Streaming...")
         self.stream: asyncio.Task[None] = asyncio.create_task(self.create_stream())
         print("Stream Started")
 
-    async def stop_streaming(self):
+    async def stop_streaming(self) -> None:
         if self.stream is None:
             return
 
@@ -93,6 +93,9 @@ class Microphone:
             await self.stream
         except asyncio.CancelledError:
             pass
+        finally:
+            self.stream = None
+            self.sound_buffer.clear()
 
 
 __all__ = ["Microphone"]

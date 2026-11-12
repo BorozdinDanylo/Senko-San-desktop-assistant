@@ -3,30 +3,30 @@ load_dotenv()
 
 from core.components import Runtime
 from tools import CodexTool
+from senko_protocol.lifecycle import run_until_stopped
 import asyncio
 
 
-async def worker():
+async def worker() -> None:
     runtime: Runtime = Runtime()
 
     try:
-        await asyncio.gather(
-            runtime.stt.worker(),
-            runtime.senko.live(),
-            runtime.voice.tts_worker(),
-            runtime.voice.speak(),
-        )
+        async with asyncio.TaskGroup() as workers:
+            workers.create_task(runtime.stt.worker())
+            workers.create_task(runtime.senko.live())
+            workers.create_task(runtime.voice.tts_worker())
+            workers.create_task(runtime.voice.speak())
+
     finally:
         try:
             await CodexTool.shutdown()
         finally:
-            await runtime.server.close()
+            await runtime.close()
 
 
-def main():
-    asyncio.run(worker())
+def main() -> None:
+    asyncio.run(run_until_stopped(worker))
 
 
 if __name__ == '__main__':
     main()
-

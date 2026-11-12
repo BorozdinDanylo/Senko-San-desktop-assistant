@@ -86,6 +86,16 @@ class History:
 
         return self
 
+    async def close(self) -> None:
+        database: aiosqlite.Connection | None = self._db
+        self._db = None
+
+        try:
+            if database is not None:
+                await database.close()
+        finally:
+            await self.summary_client.close()
+
     @staticmethod
     def create_first_chunk(is_program_starting: bool = False) -> ResponseInputParam:
         first_chunk: list[ResponseInputItemParam] = [

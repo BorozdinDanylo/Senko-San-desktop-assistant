@@ -6,15 +6,15 @@ import asyncio
 import io
 
 
-_lock = asyncio.Lock()
+_lock: asyncio.Lock = asyncio.Lock()
 
 
 class Player(metaclass=SingletonMeta):
-    def __init__(self):
-        self.playing: asyncio.Task | None = None
+    def __init__(self) -> None:
+        self.playing: asyncio.Task[None] | None = None
 
     @staticmethod
-    async def play_audio():
+    async def play_audio() -> None:
         while True:
             audio_data: bytes = await Queues.audio_queue.get()
 
@@ -25,22 +25,26 @@ class Player(metaclass=SingletonMeta):
 
             async with _lock:
                 sd.play(audio, samplerate)
-                sd.wait()
-            
+                await asyncio.to_thread(sd.wait)
+
     @staticmethod
-    def interrupt():
+    def interrupt() -> None:
         try:
             while True:
                 Queues.audio_queue.get_nowait()
                 Queues.audio_queue.task_done()
+        except asyncio.QueueEmpty:
+            pass
         finally:
             sd.stop()
 
-    def start(self):
+    def start(self) -> None:
         if self.playing is None:
             self.playing = asyncio.create_task(self.play_audio())
 
-    async def stop(self):
+    async def stop(self) -> None:
+        sd.stop()
+
         if self.playing is None:
             return
 
@@ -49,4 +53,6 @@ class Player(metaclass=SingletonMeta):
         try:
             await self.playing
         except asyncio.CancelledError:
+            pass
+        finally:
             self.playing = None
