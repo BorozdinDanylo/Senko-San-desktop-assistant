@@ -1,25 +1,18 @@
 from typing import List, Optional
 from listener.config.llm import MODEL, THINK_MODE, RouterResult, TEMPERATURE, MAX_CONTEXT_SIZE, SYSTEM_PROMPT, PERHAPS_ACTION
-from pipeline import add_answer_queue
+from pipeline.components import Events, Queues
 from ollama import AsyncClient, Message
 from json_repair import repair_json
 from pydantic import ValidationError
-import asyncio
 
 
 class TextInput:
-    def __init__(self, text_queue: asyncio.Queue, tts_queue: asyncio.Queue):
-        self.text_queue = text_queue
-        self.tts_queue = tts_queue
-
+    def __init__(self):
         self.buffer: str = ""
         self.context: str = ""
         self.content: List[Message] = []
 
         self.client: AsyncClient = AsyncClient()
-
-    async def run(self):
-        asyncio.create_task(self.add_senko_answer())
 
     def update_content(self, text: str):
         self.content.append(
@@ -31,16 +24,14 @@ class TextInput:
         if len(self.content) > MAX_CONTEXT_SIZE:
             self.content = self.content[len(self.content) - MAX_CONTEXT_SIZE:]
 
-    async def add_senko_answer(self):
-        while True:
-            text: str = await add_answer_queue.get()
-
-            self.content.append(
-                Message(
-                    role="assistant",
-                    content=text,
-                )
+    @Events.on_senko_answer
+    async def add_senko_answer(self, text: str):
+        self.content.append(
+            Message(
+                role="assistant",
+                content=text,
             )
+        )
 
     async def update_buffer(self, action: PERHAPS_ACTION, text: Optional[str], is_complete: bool):
         match action:
@@ -52,7 +43,7 @@ class TextInput:
                 self.buffer = f"{text or ""} "
 
         if is_complete:
-            await self.tts_queue.put(self.buffer)
+            await Queues.tts_queue.put(self.buffer)
             self.buffer = ""
 
     def get_messages(self, text) -> List[Message]:
@@ -79,7 +70,7 @@ class TextInput:
 
     async def hear(self):
         while True:
-            text = await self.text_queue.get()
+            text = await Queues.text_queue.get()
             messages = self.get_messages(text)
 
             response = await self.client.chat(
