@@ -1,7 +1,7 @@
 [project]
 name = "core"
 version = "0.1.0"
-description = "Add your description here"
+description = "Senko assistant runtime, speech pipeline, memory, and tools"
 readme = "README.md"
 authors = [
     { name = "BorozdinDanylo", email = "borozdindanil@gmaiil.com" }

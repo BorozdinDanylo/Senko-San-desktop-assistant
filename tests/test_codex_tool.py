@@ -171,6 +171,24 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.tool.tasks)
         self.assertFalse(self.tool.threads)
 
+    async def test_stream_exception_keeps_remote_task_reserved(self) -> None:
+        self.handle.stream = MagicMock(side_effect=ConnectionError('connection lost'))
+        task: self.module.Task = self.task()
+        self.tool.tasks['turn-1'] = task
+        self.tool.threads['thread-1'] = task.working_thread
+
+        await self.tool.checking_task(task, 'turn-1')
+
+        self.assertIn('connection lost', self.module.Queues.text_analiz.get_nowait())
+        self.assertTrue(task.remote_status_unknown)
+        self.assertTrue(task.working_thread.busy)
+        self.assertIs(self.tool.tasks['turn-1'], task)
+        self.assertIs(self.tool.threads['thread-1'], task.working_thread)
+        self.assertIn('remote status is unconfirmed', await self.tool.start_task('retry', '/project'))
+        self.assertIn('busy', await self.tool.start_task('retry', '/another', 'thread-1'))
+        self.tool.codex.thread_start.assert_not_awaited()
+        self.tool.codex.thread_resume.assert_not_awaited()
+
     async def test_thread_start_timeout_releases_reservation(self):
         self.tool.codex.thread_start.side_effect = TimeoutError('start timed out')
         with self.assertRaisesRegex(TimeoutError, 'start timed out'):

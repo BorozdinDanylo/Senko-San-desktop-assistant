@@ -1,7 +1,7 @@
 [project]
 name = "senko-client"
 version = "0.1.0"
-description = "Add your description here"
+description = "Senko desktop microphone and audio playback client"
 readme = "README.md"
 authors = [
     { name = "BorozdinDanylo", email = "borozdindanil@gmaiil.com" }

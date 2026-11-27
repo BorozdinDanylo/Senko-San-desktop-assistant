@@ -14,6 +14,7 @@ from openai_codex.generated.v2_all import (
     ActiveThreadStatus,
 )
 from typing import Annotated
+from typing import TextIO
 from pathlib import Path
 from datetime import datetime, timezone
 import asyncio
@@ -353,9 +354,10 @@ class CodexTool(Tool):
         return f"Cancellation requested for Turn ID: {turn_id}."
 
     @classmethod
-    async def checking_task(cls, task: Task, turn_id: str):
-        final_message = None
-        log_file = None
+    async def checking_task(cls, task: Task, turn_id: str) -> None:
+        final_message: str | None = None
+        log_file: TextIO | None = None
+        completion_received: bool = False
         try:
             try:
                 LOG_PATH.mkdir(parents=True, exist_ok=True)
@@ -381,6 +383,7 @@ class CodexTool(Tool):
                     if isinstance(item, AgentMessageThreadItem):
                         final_message = item.text
                 elif isinstance(event.payload, TurnCompletedNotification):
+                    completion_received = True
                     turn = event.payload.turn
                     if not final_message:
                         final_message = next(
@@ -406,6 +409,7 @@ class CodexTool(Tool):
                 task.remote_status_unknown = True
                 raise RuntimeError("Codex stream ended without a completion event; remote turn status is unknown and may still be active")
         except Exception as exc:
+            task.remote_status_unknown = not completion_received
             await Queues.text_analiz.put(
                 "[Background Codex Task Error]\n"
                 f"Turn ID: {turn_id}\n"
