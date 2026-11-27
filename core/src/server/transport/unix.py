@@ -1,6 +1,6 @@
 from core.components import Events
 from senko_protocol.model import Header, ResponseBody, model_to_bytes
-from senko_protocol.enum import Version, DataType
+from senko_protocol.enum import Version, DataType, Commands, MicrophoneActions
 from senko_protocol.path import SOCKET_PATH
 from senko_protocol.meta import SingletonMeta
 from senko_protocol.const import MAX_AUDIO_SIZE
@@ -26,6 +26,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
 
         self._clients: set[asyncio.Task[None]] = set()
         self._writers: set[asyncio.StreamWriter] = set()
+        self._runtime_writers: set[asyncio.StreamWriter] = set()
         self._owns_socket: bool = False
 
     @property
@@ -62,7 +63,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                 version_code, = await reader.readexactly(1)
                 try:
                     print(version_code)
-                    version = Version(version_code)
+                    version: Version = Version(version_code)
                 except ValueError:
                     continue
 
@@ -72,7 +73,7 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
 
                 match version:
                     case Version.V1:
-                        header = await reader.readexactly(5)
+                        header: bytes = await reader.readexactly(5)
                         data_type, message_length = struct.unpack("!BI", header)
                     case Version.V2:
                         header = await reader.readexactly(21)
@@ -81,9 +82,49 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                         print(f"Got {request_id=}")
 
                 match data_type:
+                    case DataType.REGISTER_CLIENT:
+                        if message_length != 6:
+                            return
+
+                        registration: bytes = await reader.readexactly(message_length)
+
+                        if registration != b"client":
+                            return
+
+                        self._runtime_writers.add(writer)
+
+                    case DataType.COMMAND:
+                        if message_length != 2:
+                            await self.response("Invalid command length", request_id, status_code=400, writer=writer)
+                            return
+
+                        command_body: bytes = await reader.readexactly(message_length)
+                        command_code: int
+                        action_code: int
+                        command_code, action_code = struct.unpack("!BB", command_body)
+
+                        try:
+                            command: Commands = Commands(command_code)
+
+                            if command != Commands.MICROPHONE:
+                                raise ValueError("Unsupported command")
+
+                            MicrophoneActions(action_code)
+                        except ValueError:
+                            await self.response("Invalid command or action", request_id, status_code=400, writer=writer)
+                            continue
+
+                        delivered: bool = await self.forward_command(command_body)
+                        await self.response(
+                            "Command forwarded" if delivered else "No active Senko client",
+                            request_id,
+                            status_code=200 if delivered else 503,
+                            writer=writer,
+                        )
+
                     case DataType.AUDIO:
                         if message_length > MAX_AUDIO_SIZE:
-                            await self.response("Audio message too large", request_id)
+                            await self.response("Audio message too large", request_id, writer=writer)
                             return
 
                         audio_bytes: bytes = await reader.readexactly(message_length)
@@ -92,15 +133,16 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
                             await Events.on_audio_receiving.emit(audio)
                             print("Received Audio")
                         except Exception as e:
-                            await self.response(f"Error receiving audio {e}", request_id)
+                            await self.response(f"Error receiving audio {e}", request_id, writer=writer)
                             return
 
-                        await self.response("Audio has been processed", request_id)
+                        await self.response("Audio has been processed", request_id, writer=writer)
 
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
             self._writers.discard(writer)
+            self._runtime_writers.discard(writer)
 
             if task is not None:
                 self._clients.discard(task)
@@ -116,24 +158,24 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             except OSError:
                 pass
 
-    async def response(self, response_message: str, request_id: uuid.UUID | None, version: Version = Version.V2, status_code: int = 200) -> None:
+    async def response(self, response_message: str, request_id: uuid.UUID | None, version: Version = Version.V2, status_code: int = 200, *, writer: asyncio.StreamWriter | None = None) -> None:
         if version == Version.V1 or request_id is None:
             return
 
-        body = ResponseBody(
+        body: ResponseBody = ResponseBody(
             status_code=status_code,
             message=response_message,
         )
-        body_bytes = model_to_bytes(body)
+        body_bytes: bytes = model_to_bytes(body)
 
-        header = Header(
+        header: Header = Header(
             version=version,
             type=DataType.RESPONSE,
             body_length=len(body_bytes),
             request_id=request_id,
         )
         assert header.request_id is not None
-        header_bytes = struct.pack(
+        header_bytes: bytes = struct.pack(
             "!BBI16s",
             header.version,
             header.type,
@@ -142,8 +184,9 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
         )
 
         async with self._lock:
-            self.writer.write(header_bytes + body_bytes)
-            await self.writer.drain()
+            target: asyncio.StreamWriter = writer if writer is not None else self.writer
+            target.write(header_bytes + body_bytes)
+            await target.drain()
 
         print("Send Response")
 
@@ -163,12 +206,12 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
             await server.serve_forever()
 
     async def send(self, body_message: bytes, dtype: DataType, version: Version = Version.V1) -> None:
-        header = Header(
+        header: Header = Header(
             version=version,
             type=dtype,
             body_length=len(body_message),
         )
-        header_bytes = struct.pack(
+        header_bytes: bytes = struct.pack(
             "!BBI",
             header.version,
             header.type,
@@ -176,16 +219,37 @@ class UnixSocket(Connector, metaclass=SingletonMeta):
         )
 
         async with self._lock:
-            writer: asyncio.StreamWriter | None = self._writer
+            targets: tuple[asyncio.StreamWriter, ...] = tuple(self._runtime_writers)
 
-            if writer is None or writer.is_closing():
-                return
+            for writer in targets:
+                if writer.is_closing():
+                    continue
 
-            try:
-                writer.write(header_bytes + body_message)
-                await writer.drain()
-            except ConnectionError:
-                pass
+                try:
+                    writer.write(header_bytes + body_message)
+                    await writer.drain()
+                except ConnectionError:
+                    pass
+
+    async def forward_command(self, body: bytes) -> bool:
+        header: bytes = struct.pack("!BBI", Version.V1, DataType.COMMAND, len(body))
+        delivered: bool = False
+
+        async with self._lock:
+            targets: tuple[asyncio.StreamWriter, ...] = tuple(self._runtime_writers)
+
+            for writer in targets:
+                if writer.is_closing():
+                    continue
+
+                try:
+                    writer.write(header + body)
+                    await writer.drain()
+                    delivered = True
+                except ConnectionError:
+                    pass
+
+        return delivered
 
     def start(self) -> None:
         if self._worker is not None:
