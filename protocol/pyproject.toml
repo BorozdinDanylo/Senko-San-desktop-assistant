@@ -1,7 +1,7 @@
 [project]
 name = "senko-protocol"
 version = "0.1.0"
-description = "Add your description here"
+description = "Shared Senko Unix socket protocol and lifecycle utilities"
 readme = "README.md"
 authors = [
     { name = "BorozdinDanylo", email = "borozdindanil@gmaiil.com" }

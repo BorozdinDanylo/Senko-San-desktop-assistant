@@ -1,7 +1,7 @@
 [project]
 name = "senko-san-desktop-assistant"
-version = "0.1.1"
-description = "Add your description here"
+version = "0.1.0"
+description = "A voice-driven desktop assistant with persistent memory and Codex task control"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -25,7 +25,13 @@ dependencies = [
     "fishaudio>=0.0.5",
     "tiktoken>=0.14.0",
     "aiosqlite>=0.22.1",
+    "core",
+    "senko-client",
 ]
 
 [tool.uv.workspace]
 members = ["core", "client", "protocol"]
+
+[tool.uv.sources]
+core = { workspace = true }
+senko-client = { workspace = true }
