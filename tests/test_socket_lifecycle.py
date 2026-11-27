@@ -3,13 +3,16 @@ from unittest.mock import _patch
 import asyncio
 from pathlib import Path
 import signal
+import struct
+import uuid
 import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from conection.unix_socket import UnixSocket as ClientSocket
-from senko_protocol.enum import DataType
-from senko_protocol.model import Response
+from senko_client.components import Queues
+from senko_protocol.enum import DataType, Version, Commands, MicrophoneActions
+from senko_protocol.model import Response, ResponseBody
 from senko_protocol.lifecycle import run_until_stopped
 from senko_protocol.meta import SingletonMeta
 from server.transport.unix import UnixSocket as ServerSocket
@@ -145,6 +148,54 @@ class SocketLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.body.status_code, 503)
         self.assertFalse(self.client._pending)
+
+    async def test_cli_commands_reach_registered_client_and_reply_to_cli(self) -> None:
+        await self.client.connect(receive_commands=True)
+        self.server.start()
+        await self.wait_connected()
+
+        reader: asyncio.StreamReader
+        writer: asyncio.StreamWriter
+        reader, writer = await asyncio.open_unix_connection(str(self.path))
+
+        try:
+            for action in MicrophoneActions:
+                body: bytes = struct.pack("!BB", Commands.MICROPHONE, action)
+                request_id: uuid.UUID = uuid.uuid4()
+                writer.write(struct.pack("!BBI16s", Version.V2, DataType.COMMAND, len(body), request_id.bytes) + body)
+                await writer.drain()
+
+                header: bytes = await asyncio.wait_for(reader.readexactly(22), 2)
+                version: int
+                dtype: int
+                length: int
+                response_id: bytes
+                version, dtype, length, response_id = struct.unpack("!BBI16s", header)
+                response: ResponseBody = ResponseBody.model_validate_json(await reader.readexactly(length))
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response_id, request_id.bytes)
+                self.assertEqual(dtype, DataType.RESPONSE)
+                self.assertEqual(
+                    await asyncio.wait_for(Queues.command_queue.get(), 2),
+                    (Commands.MICROPHONE, action),
+                )
+                Queues.command_queue.task_done()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    async def test_microphone_command_without_runtime_returns_unavailable(self) -> None:
+        await self.client.connect()
+        self.server.start()
+        await self.wait_connected()
+
+        response: Response = await self.client.fetch(
+            struct.pack("!BB", Commands.MICROPHONE, MicrophoneActions.OFF),
+            DataType.COMMAND,
+        )
+
+        self.assertEqual(response.body.status_code, 503)
 
     async def test_signals_wait_for_worker_cleanup(self) -> None:
         for signum in (signal.SIGINT, signal.SIGTERM):

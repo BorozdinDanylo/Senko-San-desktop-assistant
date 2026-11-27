@@ -1,0 +1,24 @@
+[Unit]
+Description=Senko assistant Core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=Senka
+Group=senka
+WorkingDirectory=/opt/senko
+EnvironmentFile=/etc/senka/core.env
+Environment=LOG_DIR=/var/log/senka
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=senko
+RuntimeDirectoryMode=0755
+LogsDirectory=senka
+LogsDirectoryMode=0750
+UMask=0027
+ExecStart=/opt/senko/.venv/bin/python -m pipeline.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

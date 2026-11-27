@@ -1,4 +1,5 @@
 from senko_client.components import Events
+from senko_protocol.enum import MicrophoneActions
 from time import monotonic
 from typing import Self, Literal
 import sounddevice as sd
@@ -22,26 +23,43 @@ def is_speaking(audio: np.ndarray) -> bool:
 class Microphone:
     singleton: Self | None = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: object, **kwargs: object) -> Self:
         if cls.singleton is None:
-            obj = object.__new__(cls)
+            obj: Self = object.__new__(cls)
             cls.singleton = obj
             return obj
 
         return cls.singleton
 
-    def __init__(self):
+    def __init__(self) -> None:
         if getattr(self, "initialized", False):
             return
 
         self.start_silent_at: float = monotonic()
         self.stream: asyncio.Task[None] | None = None
         self.sound_buffer: list[np.ndarray] = []
-        self.loop = asyncio.get_running_loop()
+        self.loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
+        self._status: bool = False
 
         self.initialized: Literal[True] = True
 
-    def sound_buffer_control(self, indata: np.ndarray, *_):
+    @property
+    def status(self) -> bool:
+        return self._status
+
+    async def set_status(self, action: MicrophoneActions) -> None:
+        enabled: bool = action == MicrophoneActions.ON
+
+        if action == MicrophoneActions.SWITCH:
+            enabled = not self._status
+
+        if enabled:
+            await self.start_streaming()
+        else:
+            await self.stop_streaming()
+
+    def sound_buffer_control(self, indata: np.ndarray, *_: object) -> None:
         audio_data: np.ndarray = indata[:, 0].copy()
         self.silent_check(audio_data)
         self.sound_buffer.append(audio_data)
@@ -58,7 +76,7 @@ class Microphone:
         ):
             await asyncio.Event().wait()
 
-    def silent_check(self, audio: np.ndarray):
+    def silent_check(self, audio: np.ndarray) -> None:
         time_now: float = monotonic()
 
         if is_speaking(audio):
@@ -79,9 +97,14 @@ class Microphone:
 
 
     async def start_streaming(self) -> None:
+        if self.stream is not None and not self.stream.done():
+            return
+
+        self.start_silent_at = monotonic()
         print("Start Streaming...")
-        self.stream: asyncio.Task[None] = asyncio.create_task(self.create_stream())
+        self.stream = asyncio.create_task(self.create_stream())
         print("Stream Started")
+        self._status = True
 
     async def stop_streaming(self) -> None:
         if self.stream is None:
@@ -96,6 +119,7 @@ class Microphone:
         finally:
             self.stream = None
             self.sound_buffer.clear()
+            self._status = False
 
 
 __all__ = ["Microphone"]

@@ -22,7 +22,7 @@ class SenkoClient:
         print(response)
 
     async def start(self) -> None:
-        await self.unix_socket.connect()
+        await self.unix_socket.connect(receive_commands=True)
 
     async def stop(self) -> None:
         await self.unix_socket.disconnect()
