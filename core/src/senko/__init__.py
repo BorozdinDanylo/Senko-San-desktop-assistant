@@ -41,9 +41,12 @@ class NewMessage:
 
     @classmethod
     def clear(cls):
-        cls.generation += 1
         cls.full_text = ""
         cls.spoken_text = ""
+
+    @classmethod
+    def interrupt(cls):
+        cls.generation += 1
 
     @classmethod
     def get_message(cls, *, clear: bool = True) -> str:

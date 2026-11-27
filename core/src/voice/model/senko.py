@@ -27,8 +27,8 @@ class SenkoVoice:
                 format="wav",
             )
 
-            # if generation != NewMessage.generation:
-            #     continue
+            if generation != NewMessage.generation:
+                continue
 
             await self.audio_queue.put(AudioDict(
                 text=text,
@@ -46,6 +46,7 @@ class SenkoVoice:
                 NewMessage.spoken(audio["text"])
 
     async def stop_talking(self):
+        NewMessage.interrupt()
         clear_queue(Queues.tts_queue)
         clear_queue(self.audio_queue)
 
