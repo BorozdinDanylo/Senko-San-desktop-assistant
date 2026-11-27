@@ -4,7 +4,7 @@ A voice-driven desktop companion inspired by Senko-san, with Ukrainian speech
 recognition, spoken replies, persistent conversation history, and background
 coding tasks through Codex.
 
-**Version 0.1.0 · Experimental · Linux · Python 3.14+**
+**Version 0.1.1 · Experimental · Linux · Python 3.14+**
 
 ## What it does
 
@@ -14,6 +14,14 @@ coding tasks through Codex.
 - Stores conversation history in SQLite and loads optional startup memories.
 - Runs terminal commands and monitors background Codex tasks.
 - Connects the assistant and audio client over a local Unix socket.
+- Controls the desktop microphone with `senko microphone on|off|switch`.
+
+## Production deployment
+
+For the root-owned `/opt/senko` installation, follow
+[the production upgrade instructions](deployment/README.md). Core runs as
+`Senka`, reads `/etc/senka/core.env` through systemd, and writes logs under
+`/var/log/senka`. The desktop CLI runs as your regular user and needs no API keys.
 
 ## Requirements
 
@@ -71,6 +79,11 @@ uv run python -m senko_client
 Use `Ctrl+C` to stop each process. Keep the checkout in place: prompts and skills
 are source files, and standalone wheel installation is not supported by this
 release.
+
+To install the CLI launcher for your source checkout, see
+[the CLI instructions](client/README.md). `senko status` checks whether Core's
+socket is reachable. Microphone commands require the updated desktop audio
+client to be running and connected.
 
 ## Project layout
 

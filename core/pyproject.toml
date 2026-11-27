@@ -1,6 +1,6 @@
 [project]
 name = "core"
-version = "0.1.0"
+version = "0.1.1"
 description = "Senko assistant runtime, speech pipeline, memory, and tools"
 readme = "README.md"
 authors = [

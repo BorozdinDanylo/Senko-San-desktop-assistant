@@ -21,6 +21,9 @@ class UnixSocket(metaclass=SingletonMeta):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
 
+        self._receive_commands: bool = False
+        self._connected: asyncio.Event = asyncio.Event()
+
         self._pending: dict[uuid.UUID, asyncio.Future[ResponseBody]] = {}
         self._listener: asyncio.Task[None] | None = None
         self._lock: asyncio.Lock = asyncio.Lock()
@@ -39,9 +42,13 @@ class UnixSocket(metaclass=SingletonMeta):
 
         return self._writer
 
-    async def connect(self) -> None:
+    async def connect(self, receive_commands: bool = False) -> None:
+        self._receive_commands = receive_commands
         if self._listener is None or self._listener.done():
             self._listener = asyncio.create_task(self._maintain_connection())
+
+    async def wait_connected(self, timeout: float = 3.0) -> None:
+        await asyncio.wait_for(self._connected.wait(), timeout)
 
     async def _maintain_connection(self) -> None:
         while True:
@@ -49,6 +56,10 @@ class UnixSocket(metaclass=SingletonMeta):
                 self._reader, self._writer = await asyncio.open_unix_connection(
                     str(SOCKET_PATH),
                 )
+                if self._receive_commands:
+                    await self.send(b"client", DataType.REGISTER_CLIENT, uuid.uuid4())
+
+                self._connected.set()
                 await self.listen()
 
             except (OSError, EOFError, ValueError, RuntimeError) as error:
@@ -60,6 +71,7 @@ class UnixSocket(metaclass=SingletonMeta):
             await asyncio.sleep(RECONNECT_DELAY)
 
     async def _close_connection(self) -> None:
+        self._connected.clear()
         writer: asyncio.StreamWriter | None = self._writer
         self._reader = None
         self._writer = None
@@ -126,6 +138,13 @@ class UnixSocket(metaclass=SingletonMeta):
                     case DataType.AUDIO:
                         print("Got audio data")
                         await Queues.audio_queue.put(data)
+
+                    case DataType.COMMAND:
+                        command_code: int
+                        action_code: int
+                        command_code, action_code = struct.unpack("!BB", data)
+
+                        await Queues.command_queue.put((command_code, action_code))
 
         except asyncio.CancelledError:
             raise
