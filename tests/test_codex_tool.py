@@ -5,6 +5,7 @@ unrelated assistant components. Failures describe defects in the audited file.
 """
 import asyncio
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
@@ -20,6 +21,7 @@ SOURCE = Path(__file__).resolve().parents[1] / 'core/src/tools/codex/codex_tool.
 
 def load_module():
     components = ModuleType('core.components')
+    components.__path__ = [str(SOURCE.parents[2] / 'core/components')]
     components.Queues = NS(text_analiz=None)
     registration = ModuleType('tools.types.tool')
     registration.Tool = type('Tool', (), {
@@ -128,6 +130,8 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
         await self.tool.checking_task(task, 'turn-1')
         notice = self.module.Queues.text_analiz.get_nowait()
         self.assertIn('quota exhausted', notice)
+        self.assertIn('Status: failed', notice)
+        self.assertIn('[Background Codex Task Outcome]', notice)
         self.assertFalse(task.working_thread.busy)
         self.assertNotIn('turn-1', self.tool.tasks)
 
@@ -142,8 +146,21 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stream_ending_without_completion_notifies_user(self):
         self.handle.stream = lambda: self.stream()
-        await self.tool.checking_task(self.task(), 'turn-1')
-        self.assertFalse(self.module.Queues.text_analiz.empty())
+        task = self.task()
+        self.tool.tasks['turn-1'] = task
+        self.tool.threads['thread-1'] = task.working_thread
+        await self.tool.checking_task(task, 'turn-1')
+        notice = self.module.Queues.text_analiz.get_nowait()
+        self.assertIn('remote turn status is unknown', notice)
+        self.assertIs(self.tool.tasks['turn-1'], task)
+        self.assertTrue(task.working_thread.busy)
+        self.assertIs(self.tool.threads['thread-1'], task.working_thread)
+        result = await self.tool.start_task('retry', '/project/./')
+        self.assertIn('remote status is unconfirmed', result)
+        self.tool.codex.thread_start.assert_not_awaited()
+        result = await self.tool.start_task('retry', '/another', 'thread-1')
+        self.assertIn('busy', result)
+        self.tool.codex.thread_resume.assert_not_awaited()
 
     async def test_start_failure_releases_reservations(self):
         self.thread.turn.side_effect = RuntimeError('unavailable')
@@ -154,6 +171,13 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.tool.tasks)
         self.assertFalse(self.tool.threads)
 
+    async def test_thread_start_timeout_releases_reservation(self):
+        self.tool.codex.thread_start.side_effect = TimeoutError('start timed out')
+        with self.assertRaisesRegex(TimeoutError, 'start timed out'):
+            await self.tool.start_task('inspect', '/project')
+        self.assertFalse(self.tool.starting_directories)
+        self.assertFalse(self.tool.tasks)
+
     async def test_cancel_interrupts_remote_turn_without_dropping_tracking(self):
         self.handle.interrupt = AsyncMock()
         task = self.task()
@@ -163,6 +187,30 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Cancellation requested', result)
         self.assertIs(self.tool.tasks['turn-1'], task)
         self.assertIn('No running', await self.tool.cancel_task('missing'))
+
+    async def test_cancel_failure_keeps_task_tracked(self):
+        self.handle.interrupt = AsyncMock(side_effect=TimeoutError('interrupt timed out'))
+        task = self.task()
+        self.tool.tasks['turn-1'] = task
+        with self.assertRaisesRegex(TimeoutError, 'interrupt timed out'):
+            await self.tool.cancel_task('turn-1')
+        self.assertIs(self.tool.tasks['turn-1'], task)
+        self.assertTrue(task.working_thread.busy)
+
+    async def test_interrupted_turn_reports_outcome_and_cleans_up(self):
+        self.handle.interrupt = AsyncMock()
+        turn = Turn(id='turn-1', items=[], status='interrupted')
+        self.handle.stream = lambda: self.stream(NS(payload=TurnCompletedNotification(thread_id='thread-1', turn=turn)))
+        task = self.task()
+        self.tool.tasks['turn-1'] = task
+        await self.tool.cancel_task('turn-1')
+        await self.tool.checking_task(task, 'turn-1')
+        notice = self.module.Queues.text_analiz.get_nowait()
+        self.assertIn('Status: interrupted', notice)
+        self.assertIn('[Background Codex Task Outcome]', notice)
+        self.assertIn('<no agent message available>', notice)
+        self.assertNotIn('turn-1', self.tool.tasks)
+        self.assertIn('No running', await self.tool.cancel_task('turn-1'))
 
     async def test_unwritable_log_still_delivers_completion_and_cleans_state(self):
         turn = Turn(id='turn-1', items=[], status='completed')
@@ -178,6 +226,11 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.tool.tasks)
         self.assertFalse(self.tool.threads)
         self.assertFalse(task.working_thread.busy)
+        with patch.object(self.tool, 'checking_task', AsyncMock()):
+            result = await self.tool.start_task('next task', '/project')
+            await asyncio.sleep(0)
+        self.assertIn('started successfully', result)
+        self.tool.codex.thread_start.assert_awaited_once()
 
     async def test_log_write_failure_still_delivers_final_message(self):
         from openai_codex.generated.v2_all import AgentMessageThreadItem, ThreadItem
@@ -193,6 +246,34 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
             with self.assertLogs(self.module.logger, level='WARNING'):
                 await self.tool.checking_task(self.task(), 'turn-1')
         self.assertIn('Result:\nDone', self.module.Queues.text_analiz.get_nowait())
+
+    async def test_event_log_redacts_new_text_and_preserves_existing_entries(self):
+        from openai_codex.generated.v2_all import AgentMessageThreadItem, ThreadItem
+        from openai_codex.models import ItemCompletedNotification
+
+        log_path = Path(self.temp.name) / 'turn-1.log'
+        log_path.write_text('old password=unchanged\n', encoding='utf-8')
+        texts = [
+            'password=example-secret',
+            json.dumps({'items': [{'access_token': 'nested-secret', 'status': 'completed'}]}),
+            'Ordinary event text.',
+        ]
+        items = [ThreadItem(root=AgentMessageThreadItem(id=str(i), text=text, type='agentMessage'))
+                 for i, text in enumerate(texts)]
+        events = [NS(payload=ItemCompletedNotification(thread_id='thread-1', turn_id='turn-1',
+                                                       item=item, completed_at_ms=0)) for item in items]
+        turn = Turn(id='turn-1', items=items, status='completed')
+        events.append(NS(payload=TurnCompletedNotification(thread_id='thread-1', turn=turn)))
+        self.handle.stream = lambda: self.stream(*events)
+
+        await self.tool.checking_task(self.task(), 'turn-1')
+
+        lines = log_path.read_text(encoding='utf-8').splitlines()
+        self.assertEqual(lines[0], 'old password=unchanged')
+        self.assertEqual(lines[1], 'password=[REDACTED]')
+        self.assertEqual(json.loads(lines[2]), {'items': [{'access_token': '[REDACTED]', 'status': 'completed'}]})
+        self.assertEqual(lines[3], texts[2])
+        self.assertIn('Status: completed', self.module.Queues.text_analiz.get_nowait())
 
     async def test_shutdown_interrupts_turn_and_joins_monitor(self):
         self.handle.interrupt = AsyncMock()
@@ -221,9 +302,61 @@ class CodexToolTests(unittest.IsolatedAsyncioTestCase):
             NS(data=[thread('first')], next_cursor='page-2'),
             NS(data=[thread('second')], next_cursor=None),
         ])
-        result = await self.tool.threads_list()
+        with patch.object(self.tool, 'thread_status', AsyncMock(side_effect=['first', 'second'])):
+            result = await self.tool.threads_list()
         self.assertIn('first', result)
         self.assertIn('second', result)
+
+    async def test_list_reads_latest_turn_status_and_result(self):
+        from openai_codex.generated.v2_all import AgentMessageThreadItem, ThreadItem
+
+        item = ThreadItem(root=AgentMessageThreadItem(id='message-1', text='Latest result', type='agentMessage'))
+        self.tool.codex.thread_list = AsyncMock(return_value=NS(
+            data=[NS(id='thread-1', cwd=NS(root='/project'), status=NS(root='stale'))],
+            next_cursor=None,
+        ))
+        for state in ('inProgress', 'completed', 'interrupted', 'failed'):
+            with self.subTest(state=state):
+                turn = Turn.model_validate({'id': 'turn-1', 'items': [item], 'status': state})
+                data = NS(id='thread-1', name='Example', preview='', updated_at=None,
+                          status=NS(root=NS(type='loaded')), turns=[turn])
+                reader = NS(read=AsyncMock(return_value=NS(thread=data)))
+                with patch.object(self.module, 'AsyncThread', return_value=reader):
+                    result = await self.tool.threads_list()
+                reader.read.assert_awaited_once_with(include_turns=True)
+                self.assertIn(f'Turn Status: {state}', result)
+                self.assertIn('Last Agent Message: Latest result', result)
+                self.assertNotIn('stale', result)
+
+    async def test_list_reports_unavailable_instead_of_stale_status(self):
+        self.tool.codex.thread_list = AsyncMock(return_value=NS(
+            data=[NS(id='thread-1', cwd=NS(root='/project'), status=NS(root='active'))],
+            next_cursor=None,
+        ))
+        with patch.object(self.tool, 'thread_status', AsyncMock(side_effect=RuntimeError('offline'))):
+            with self.assertLogs(self.module.logger, level='WARNING'):
+                result = await self.tool.threads_list()
+        self.assertIn('Status unavailable', result)
+        self.assertNotIn('active', result)
+
+    async def test_history_timeout_is_not_reported_as_empty(self):
+        self.tool.codex.thread_list = AsyncMock(side_effect=TimeoutError('history timed out'))
+        with self.assertRaisesRegex(TimeoutError, 'history timed out'):
+            await self.tool.threads_list()
+
+    async def test_empty_history_is_explicit(self):
+        self.tool.codex.thread_list = AsyncMock(return_value=NS(data=[], next_cursor=None))
+        self.assertEqual(await self.tool.threads_list(), 'No Codex threads found.')
+
+    async def test_completed_turn_uses_message_from_completion(self):
+        from openai_codex.generated.v2_all import AgentMessageThreadItem, ThreadItem
+        item = ThreadItem(root=AgentMessageThreadItem(id='message-1', text='Finished', type='agentMessage'))
+        turn = Turn(id='turn-1', items=[item], status='completed')
+        self.handle.stream = lambda: self.stream(NS(payload=TurnCompletedNotification(thread_id='thread-1', turn=turn)))
+        await self.tool.checking_task(self.task(), 'turn-1')
+        notice = self.module.Queues.text_analiz.get_nowait()
+        self.assertIn('Status: completed', notice)
+        self.assertIn('Result:\nFinished', notice)
 
 
 if __name__ == '__main__':

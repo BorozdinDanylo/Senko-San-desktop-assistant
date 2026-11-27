@@ -1,5 +1,6 @@
 from senko_protocol.path import BASE_DIR
 from core.components.path import SYSTEM_SENKO_PROMPT
+from core.components.history_redaction import redact_history
 from openai.types.responses import ResponseInputParam, EasyInputMessageParam, ResponseInputItemParam
 from openai import AsyncOpenAI
 from openai.types.shared_params import Reasoning, ResponsesModel
@@ -60,7 +61,7 @@ class History:
         ) as cursor:
             rows = list(await cursor.fetchall())
 
-        self._history = [self.create_first_chunk()]
+        self._history = [self.create_first_chunk(is_program_starting=True)]
 
         previous_chunk_id: int | None = None
 
@@ -104,23 +105,24 @@ class History:
                 role="developer",
                 content=SYSTEM_SENKO_PROMPT.read_text(encoding="utf-8"),
             ),
-            EasyInputMessageParam(
-                type="message",
-                role="assistant",
-                content=MAIN_MEMORIES_PATH.read_text(encoding="utf-8"),
-            )
         ]
 
-        if is_program_starting and MAIN_MEMORIES_PATH.is_file():
+        paths = [MAIN_MEMORIES_PATH]
+        if is_program_starting:
+            paths.append(NOTES_TO_NEXT_START_PATH)
+        for path in paths:
+            try:
+                content = path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                continue
             first_chunk.append(EasyInputMessageParam(
-                type="message",
-                role="assistant",
-                content=NOTES_TO_NEXT_START_PATH.read_text(encoding="utf-8"),
+                type="message", role="assistant", content=content,
             ))
 
         return first_chunk
 
     async def add(self, message: ResponseInputItemParam):
+        message = redact_history(message)
         self._history[-1].append(message)
 
         assert self._db is not None
@@ -201,7 +203,7 @@ class History:
             EasyInputMessageParam(
                 type="message",
                 role="assistant",
-                content=response.output_text,
+                content=redact_history(response.output_text),
             )
         ]
 

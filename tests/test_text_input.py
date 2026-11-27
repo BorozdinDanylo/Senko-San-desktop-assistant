@@ -1,17 +1,20 @@
 import asyncio
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
-from listener import TextInput
+from core.components import Queues
+from listener.text_combining.text_input import TextInput
 
 
 class TextInputTests(unittest.IsolatedAsyncioTestCase):
     async def test_hear_continues_after_empty_responses(self):
         # Avoid starting the unrelated background answer consumer.
         text_input = TextInput.__new__(TextInput)
-        text_input.text_queue = asyncio.Queue()
-        text_input.tts_queue = asyncio.Queue()
+        text_queue = asyncio.Queue()
+        tts_queue = asyncio.Queue()
+        self.enterContext(patch.object(Queues, "text_queue", text_queue))
+        self.enterContext(patch.object(Queues, "tts_queue", tts_queue))
         text_input.buffer = ""
         text_input.content = []
         text_input.context = ""
@@ -23,11 +26,11 @@ class TextInputTests(unittest.IsolatedAsyncioTestCase):
             )),
         ]))
         for text in ("first", "second", "third"):
-            text_input.text_queue.put_nowait(text)
+            text_queue.put_nowait(text)
 
         worker = asyncio.create_task(text_input.hear())
         try:
-            answer = await asyncio.wait_for(text_input.tts_queue.get(), timeout=1)
+            answer = await asyncio.wait_for(tts_queue.get(), timeout=1)
             self.assertEqual(answer, "Hello ")
             self.assertEqual(text_input.client.chat.await_count, 3)
             self.assertFalse(worker.done())
